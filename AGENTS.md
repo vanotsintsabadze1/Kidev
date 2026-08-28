@@ -27,5 +27,6 @@ Each entry must state the convention and, when useful, its scope or rationale.
 | Expected failures | Represent expected business or validation failures with result/error values. Reserve exceptions for exceptional or infrastructure failures. |
 | Testing | Add or update focused automated tests for every behavior change and bug fix. Use xUnit and FluentAssertions. |
 | Documentation | Require XML documentation comments on all public types and members. |
+| Project overview | Keep `PROJECT_OVERVIEW.md` current when project goals, architecture, MVP scope, or component responsibilities change. |
 | Logging | Use injected `ILogger` with structured message templates. Never log sensitive values. |
 | Packages | Add package dependencies only when they are maintained and justified; prefer BCL or framework capabilities where suitable. |
