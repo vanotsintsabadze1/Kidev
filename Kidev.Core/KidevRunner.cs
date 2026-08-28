@@ -7,7 +7,7 @@ namespace Kidev.Core;
 /// <summary>
 /// Runs core background work for the lifetime of the host.
 /// </summary>
-public sealed class KidevRunner : BackgroundService
+internal sealed class KidevRunner : BackgroundService
 {
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

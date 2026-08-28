@@ -18,7 +18,7 @@ Deliver the smallest useful system that can:
 
 ## Non-Goals For The MVP
 
-- Recurring or scheduled jobs.
+- Advanced schedules beyond the initial minute and hour recurrence builders.
 - Distributed worker coordination beyond the initial persistence-backed design.
 - Retries, queues with priorities, rate limits, and job continuations.
 - A public compatibility layer for Hangfire.
@@ -30,14 +30,17 @@ Deliver the smallest useful system that can:
 Kidev
 |
 |-- Kidev.Core
-|   |-- Job contracts and domain models
+|   |-- Job contracts, domain models, and persistence entities
+|   |-- Public build-time job registration API
+|   |-- Internal immutable registration catalog
 |   |-- Job execution abstractions
 |   `-- KidevRunner
 |       `-- Hosted BackgroundService; remains active until host cancellation
 |
 |-- Kidev.Storage.PostgreSQL
-|   |-- PostgreSQL persistence implementation
-|   `-- Job state and execution records
+|   |-- Npgsql Entity Framework Core database context
+|   `-- PostgreSQL mapping for core persistence entities
+|       `-- Versioned EF Core migrations
 |
 `-- Kidev.Dashboard
     |-- Job status visibility
@@ -51,10 +54,13 @@ Submit job -> Persist job -> Runner claims job -> Execute job
 ## Current State
 
 - `Kidev.Core` contains the initial `KidevRunner`, a hosted service that waits for host cancellation. It does not execute jobs yet.
-- `Kidev.Storage.PostgreSQL` is an empty storage project scaffold.
+- `Kidev.Core/Data/JobDefinition` persists a recurring job's generated integer ID, service assembly/type, method, cron expression, UTC-default time zone, execution timestamps, and enabled state.
+- Applications register direct service method calls through `services.AddKidev(...)`. Registrations use explicit stable keys, allow constant arguments only, and are frozen into an internal catalog after application setup.
+- Enabled jobs are retrieved through a PostgreSQL partial index ordered by next execution time and ID; cron expressions are parsed only when calculating the next occurrence.
+- `Kidev.Storage.PostgreSQL/KidevDbContext` maps job definitions to PostgreSQL through Npgsql Entity Framework Core. Its initial schema migration and model snapshot ship under `Migrations`; applications must explicitly apply them.
 - `Kidev.Dashboard` is an empty Razor component library scaffold.
-- No job contract, persistence schema, job execution, hosting application, or dashboard job-status UI exists yet.
+- No database synchronization, job execution, hosting application, or dashboard job-status UI exists yet.
 
 ## Implementation Direction
 
-Build vertically in MVP-sized increments. Add a job contract and state model first, then persistence, runner claiming/execution, and finally dashboard visibility. Keep interfaces limited to persistence and hosting boundaries where substitution is required.
+Build vertically in MVP-sized increments. Add database synchronization next, then runner claiming/execution, and finally dashboard visibility. Keep interfaces limited to persistence and hosting boundaries where substitution is required.
