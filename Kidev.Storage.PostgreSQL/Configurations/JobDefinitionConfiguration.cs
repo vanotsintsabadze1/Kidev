@@ -16,6 +16,14 @@ internal sealed class JobDefinitionConfiguration : IEntityTypeConfiguration<JobD
             .HasColumnName("id")
             .UseIdentityByDefaultColumn();
 
+        builder.Property(job => job.RegistrationKey)
+            .HasColumnName("registration_key")
+            .HasMaxLength(256)
+            .IsRequired();
+
+        builder.HasIndex(job => job.RegistrationKey)
+            .IsUnique();
+
         builder.Property(job => job.AssemblyName)
             .HasColumnName("assembly_name")
             .HasMaxLength(512)
@@ -29,6 +37,16 @@ internal sealed class JobDefinitionConfiguration : IEntityTypeConfiguration<JobD
         builder.Property(job => job.MethodName)
             .HasColumnName("method_name")
             .HasMaxLength(512)
+            .IsRequired();
+
+        builder.Property(job => job.MethodParameterTypesJson)
+            .HasColumnName("method_parameter_types")
+            .HasColumnType("jsonb")
+            .IsRequired();
+
+        builder.Property(job => job.ArgumentsJson)
+            .HasColumnName("arguments")
+            .HasColumnType("jsonb")
             .IsRequired();
 
         builder.Property(job => job.CronExpression)

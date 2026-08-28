@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="Kidev.Core/Kidev.Core.csproj" />
+  <Project Path="Kidev.Core.Tests/Kidev.Core.Tests.csproj" />
   <Project Path="Kidev.Dashboard/Kidev.Dashboard.csproj" />
   <Project Path="Kidev.Storage.PostgreSQL/Kidev.Storage.PostgreSQL.csproj" />
 </Solution>

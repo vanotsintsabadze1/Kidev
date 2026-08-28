@@ -13,6 +13,11 @@ public sealed class JobDefinition
     public int Id { get; set; }
 
     /// <summary>
+    /// Gets or sets the stable unique key assigned by the application during registration.
+    /// </summary>
+    public string RegistrationKey { get; set; } = string.Empty;
+
+    /// <summary>
     /// Gets or sets the assembly name that contains the service type.
     /// </summary>
     public string AssemblyName { get; set; } = string.Empty;
@@ -26,6 +31,16 @@ public sealed class JobDefinition
     /// Gets or sets the method to invoke on the service type.
     /// </summary>
     public string MethodName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the JSON array of assembly-qualified method parameter type names.
+    /// </summary>
+    public string MethodParameterTypesJson { get; set; } = "[]";
+
+    /// <summary>
+    /// Gets or sets the JSON array of serialized method argument values.
+    /// </summary>
+    public string ArgumentsJson { get; set; } = "[]";
 
     /// <summary>
     /// Gets or sets the cron expression that defines the recurrence schedule.

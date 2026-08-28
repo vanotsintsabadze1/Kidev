@@ -31,6 +31,8 @@ Kidev
 |
 |-- Kidev.Core
 |   |-- Job contracts, domain models, and persistence entities
+|   |-- Public build-time job registration API
+|   |-- Internal immutable registration catalog
 |   |-- Job execution abstractions
 |   `-- KidevRunner
 |       `-- Hosted BackgroundService; remains active until host cancellation
@@ -52,6 +54,7 @@ Submit job -> Persist job -> Runner claims job -> Execute job
 
 - `Kidev.Core` contains the initial `KidevRunner`, a hosted service that waits for host cancellation. It does not execute jobs yet.
 - `Kidev.Core/Data/JobDefinition` persists a recurring job's generated integer ID, service assembly/type, method, cron expression, UTC-default time zone, execution timestamps, and enabled state.
+- Applications register direct service method calls through `services.AddKidev(...)`. Registrations use explicit stable keys, allow constant arguments only, and are frozen into an internal catalog after application setup.
 - Enabled jobs are retrieved through a PostgreSQL partial index ordered by next execution time and ID; cron expressions are parsed only when calculating the next occurrence.
 - `Kidev.Storage.PostgreSQL/KidevDbContext` maps job definitions to PostgreSQL through Npgsql Entity Framework Core. No migration or database registration exists yet.
 - `Kidev.Dashboard` is an empty Razor component library scaffold.
