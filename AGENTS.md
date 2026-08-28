@@ -23,6 +23,7 @@ Each entry must state the convention and, when useful, its scope or rationale.
 | Interfaces | Introduce interfaces at external boundaries, for public contracts, or when a concrete dependency needs substitution. Do not create an interface for every service. |
 | Types | Use immutable records for value/data models. Use classes for entities, services, and mutable identity-bearing types. |
 | Dependency injection | Use constructor injection. Do not use service locators or static dependency access. |
+| Persistence architecture | Keep persistence entities in `Kidev.Core/Data`; configure their database mapping in internal `IEntityTypeConfiguration<T>` classes under `Kidev.Storage.PostgreSQL/Configurations`, registered through assembly scanning in the DbContext. |
 | Validation | Validate untrusted input at API, messaging, CLI, and persistence boundaries. Domain methods may assume validated input. |
 | Expected failures | Represent expected business or validation failures with result/error values. Reserve exceptions for exceptional or infrastructure failures. |
 | Testing | Add or update focused automated tests for every behavior change and bug fix. Use xUnit and FluentAssertions. |
