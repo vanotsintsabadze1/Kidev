@@ -14,11 +14,13 @@ Kidev is a modern, simple, and fast .NET background-job platform inspired by Han
 Register a service method once during application setup. Kidev captures its durable definition, stores it in PostgreSQL, and will execute it on its cron schedule.
 
 ```csharp
-builder.Services.AddKidev(kidev =>
-{
-    kidev.Run<IEmailService>("send-digest", service => service.SendDigest("weekly", 25))
-        .EveryMinute(5);
-});
+builder.Services
+    .AddKidev(kidev =>
+    {
+        kidev.Run<IEmailService>("send-digest", service => service.SendDigest("weekly", 25))
+            .EveryMinute(5);
+    })
+    .AddPostgreSqlStorage(connectionString);
 ```
 
 The registration above describes a job. It does not execute the method during application setup.

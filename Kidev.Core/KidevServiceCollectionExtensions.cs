@@ -13,8 +13,8 @@ public static class KidevServiceCollectionExtensions
     /// </summary>
     /// <param name="services">The application service collection.</param>
     /// <param name="configure">The job registration configuration.</param>
-    /// <returns>The application service collection.</returns>
-    public static IServiceCollection AddKidev(this IServiceCollection services, Action<Kidev> configure)
+    /// <returns>A builder for selecting Kidev storage.</returns>
+    public static KidevServiceBuilder AddKidev(this IServiceCollection services, Action<Kidev> configure)
     {
         if (services is null)
         {
@@ -29,7 +29,8 @@ public static class KidevServiceCollectionExtensions
         var kidev = new Kidev();
         configure(kidev);
         services.AddSingleton(kidev.Freeze());
+        services.AddHostedService<KidevRunner>();
 
-        return services;
+        return new KidevServiceBuilder(services);
     }
 }

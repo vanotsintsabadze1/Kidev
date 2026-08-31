@@ -1,5 +1,9 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
+using Kidev.Core.Data;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Kidev.Core.Tests;
@@ -47,6 +51,41 @@ public sealed class KidevTests
     }
 
     /// <summary>
+    /// Verifies the runner invokes the next due job using its stored method signature and arguments.
+    /// </summary>
+    [Fact]
+    public async Task RunnerExecutesNextDueJob()
+    {
+        var executionCompletionSource = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var jobCompletionSource = new TaskCompletionSource<(DateTimeOffset LastExecutedAtUtc, DateTimeOffset NextExecutionAtUtc)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var jobDefinition = new JobDefinition
+        {
+            RegistrationKey = "execute-report",
+            ServiceTypeName = typeof(IRunnerJobService).AssemblyQualifiedName!,
+            MethodName = nameof(IRunnerJobService.Execute),
+            MethodParameterTypesJson = $"[\"{typeof(string).AssemblyQualifiedName}\"]",
+            ArgumentsJson = "[\"daily\"]",
+            CronExpression = "*/1 * * * *",
+            NextExecutionAtUtc = DateTimeOffset.UtcNow
+        };
+        var services = new ServiceCollection();
+        services.AddScoped<IRunnerJobService>(_ => new RunnerJobService(executionCompletionSource));
+        services.AddSingleton<IJobDefinitionStore>(new TestJobDefinitionStore(jobDefinition, jobCompletionSource));
+
+        await using ServiceProvider serviceProvider = services.BuildServiceProvider();
+        var runner = new KidevRunner(serviceProvider.GetRequiredService<IServiceScopeFactory>());
+
+        await runner.StartAsync(CancellationToken.None);
+
+        string executionArgument = await executionCompletionSource.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        (DateTimeOffset lastExecutedAtUtc, DateTimeOffset nextExecutionAtUtc) = await jobCompletionSource.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await runner.StopAsync(CancellationToken.None);
+
+        executionArgument.Should().Be("daily");
+        nextExecutionAtUtc.Should().BeAfter(lastExecutedAtUtc);
+    }
+
+    /// <summary>
     /// Defines a service shape used to inspect a registered method call.
     /// </summary>
     public interface IJobService
@@ -57,5 +96,49 @@ public sealed class KidevTests
         /// <param name="frequency">The digest frequency.</param>
         /// <param name="maximumItems">The maximum number of items to include.</param>
         void SendDigest(string frequency, int maximumItems);
+    }
+
+    /// <summary>
+    /// Defines a service shape used to execute a persisted job definition.
+    /// </summary>
+    public interface IRunnerJobService
+    {
+        /// <summary>
+        /// Executes the persisted job payload.
+        /// </summary>
+        /// <param name="schedule">The persisted schedule argument.</param>
+        void Execute(string schedule);
+    }
+
+    private sealed class RunnerJobService(TaskCompletionSource<string> completionSource) : IRunnerJobService
+    {
+        public void Execute(string schedule)
+        {
+            completionSource.SetResult(schedule);
+        }
+    }
+
+    private sealed class TestJobDefinitionStore(
+        JobDefinition jobDefinition,
+        TaskCompletionSource<(DateTimeOffset LastExecutedAtUtc, DateTimeOffset NextExecutionAtUtc)> completionSource) : IJobDefinitionStore
+    {
+        private JobDefinition? nextJobDefinition = jobDefinition;
+
+        public Task<JobDefinition?> GetNextDueAsync(DateTimeOffset utcNow, CancellationToken cancellationToken)
+        {
+            JobDefinition? result = nextJobDefinition;
+            nextJobDefinition = null;
+            return Task.FromResult(result);
+        }
+
+        public Task CompleteAsync(
+            int jobId,
+            DateTimeOffset lastExecutedAtUtc,
+            DateTimeOffset nextExecutionAtUtc,
+            CancellationToken cancellationToken)
+        {
+            completionSource.SetResult((lastExecutedAtUtc, nextExecutionAtUtc));
+            return Task.CompletedTask;
+        }
     }
 }
