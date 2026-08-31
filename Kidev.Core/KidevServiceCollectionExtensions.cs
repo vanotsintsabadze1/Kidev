@@ -29,6 +29,7 @@ public static class KidevServiceCollectionExtensions
         var kidev = new Kidev();
         configure(kidev);
         services.AddSingleton(kidev.Freeze());
+        services.AddHostedService<KidevRunner>();
 
         return services;
     }

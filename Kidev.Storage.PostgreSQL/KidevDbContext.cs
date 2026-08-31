@@ -6,7 +6,7 @@ namespace Kidev.Storage.PostgreSQL;
 /// <summary>
 /// Provides PostgreSQL persistence for Kidev job definitions.
 /// </summary>
-public sealed class KidevDbContext(DbContextOptions<KidevDbContext> options) : DbContext(options)
+internal sealed class KidevDbContext(DbContextOptions<KidevDbContext> options) : DbContext(options)
 {
     /// <summary>
     /// Gets the persisted recurring job definitions.
