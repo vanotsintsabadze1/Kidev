@@ -12,20 +12,20 @@ public static class KidevStorageServiceCollectionExtensions
     /// <summary>
     /// Adds PostgreSQL storage used by Kidev to retrieve and update due jobs.
     /// </summary>
-    /// <param name="services">The application service collection.</param>
+    /// <param name="kidevBuilder">The builder returned by <c>AddKidev</c>.</param>
     /// <param name="connectionString">The PostgreSQL connection string.</param>
     /// <returns>The application service collection.</returns>
-    public static IServiceCollection AddPostgreSqlStorage(this IServiceCollection services, string connectionString)
+    public static IServiceCollection AddPostgreSqlStorage(this KidevServiceBuilder kidevBuilder, string connectionString)
     {
-        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(kidevBuilder);
 
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             throw new ArgumentException("The PostgreSQL connection string cannot be null, empty, or whitespace.", nameof(connectionString));
         }
 
-        services.AddDbContext<KidevDbContext>(options => options.UseNpgsql(connectionString));
-        services.AddScoped<IJobDefinitionStore, PostgreSqlJobDefinitionStore>();
-        return services;
+        kidevBuilder.Services.AddDbContext<KidevDbContext>(options => options.UseNpgsql(connectionString));
+        kidevBuilder.Services.AddScoped<IJobDefinitionStore, PostgreSqlJobDefinitionStore>();
+        return kidevBuilder.Services;
     }
 }
