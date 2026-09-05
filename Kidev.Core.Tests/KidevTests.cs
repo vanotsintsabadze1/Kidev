@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -90,6 +91,12 @@ public sealed class KidevTests
         executionArgument.Should().Be("daily");
         nextExecutionAtUtc.Should().BeAfter(lastExecutedAtUtc);
         ((TestJobDefinitionStore)serviceProvider.GetRequiredService<IJobDefinitionStore>()).WasSynchronized.Should().BeTrue();
+        var store = (TestJobDefinitionStore)serviceProvider.GetRequiredService<IJobDefinitionStore>();
+        store.Process.Should().NotBeNull();
+        store.Process.Id.Should().HaveLength(32);
+        store.Process.WorkerCount.Should().Be(registrationCatalog.WorkerCount);
+        store.Process.ProcessId.Should().Be(Environment.ProcessId);
+        store.Process.StoppedAtUtc.Should().NotBeNull();
     }
 
     /// <summary>
@@ -126,6 +133,95 @@ public sealed class KidevTests
 
         errorType.Should().Be(typeof(InvalidOperationException).FullName);
         errorMessage.Should().Be("Expected job failure.");
+    }
+
+    /// <summary>Verifies synchronous work cannot block slot startup or process heartbeats, including graceful drain.</summary>
+    [Fact]
+    public async Task RunnerHeartbeatsWhileSynchronousWorkDrainsAsync()
+    {
+        using var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource<(DateTimeOffset, DateTimeOffset)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var job = new JobDefinition
+        {
+            RegistrationKey = "blocking-job",
+            ServiceTypeName = typeof(BlockingRunnerJobService).AssemblyQualifiedName!,
+            MethodName = nameof(BlockingRunnerJobService.Execute),
+            MethodParameterTypesJson = "[]",
+            ArgumentsJson = "[]",
+            CronExpression = "* * * * *",
+        };
+        var store = new TestJobDefinitionStore(job, completed);
+        var services = new ServiceCollection();
+        services.AddSingleton<IJobDefinitionStore>(store);
+        services.AddSingleton(new BlockingRunnerJobService(entered, release));
+        await using ServiceProvider provider = services.BuildServiceProvider();
+        using var runner = new KidevRunner(provider.GetRequiredService<IServiceScopeFactory>(),
+            new Kidev { WorkerCount = 2 }.Freeze(), NullLogger<KidevRunner>.Instance);
+        await runner.StartAsync(CancellationToken.None);
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await store.AllWorkersClaimed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Task stopping = runner.StopAsync(CancellationToken.None);
+            await store.Heartbeat.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            stopping.IsCompleted.Should().BeFalse();
+            store.Process.Should().NotBeNull();
+            store.Process.StoppedAtUtc.Should().BeNull();
+            store.Process.LastHeartbeatAtUtc.Should().BeAfter(store.Process.StartedAtUtc);
+            release.Set();
+            await stopping.WaitAsync(TimeSpan.FromSeconds(5));
+            completed.Task.IsCompletedSuccessfully.Should().BeTrue();
+            store.Process.StoppedAtUtc.Should().NotBeNull();
+        }
+        finally
+        {
+            release.Set();
+            await runner.StopAsync(CancellationToken.None);
+        }
+    }
+
+    /// <summary>Verifies a returned Task finishes before success and shutdown are recorded.</summary>
+    [Fact]
+    public async Task RunnerAwaitsReturnedTaskBeforeRecordingCompletionAsync()
+    {
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource<(DateTimeOffset, DateTimeOffset)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var job = new JobDefinition
+        {
+            RegistrationKey = "async-job",
+            ServiceTypeName = typeof(AsyncRunnerJobService).AssemblyQualifiedName!,
+            MethodName = nameof(AsyncRunnerJobService.ExecuteAsync),
+            MethodParameterTypesJson = "[]",
+            ArgumentsJson = "[]",
+            CronExpression = "* * * * *",
+        };
+        var store = new TestJobDefinitionStore(job, completed);
+        var services = new ServiceCollection();
+        services.AddSingleton<IJobDefinitionStore>(store);
+        services.AddSingleton(new AsyncRunnerJobService(entered, release.Task));
+        await using ServiceProvider provider = services.BuildServiceProvider();
+        using var runner = new KidevRunner(provider.GetRequiredService<IServiceScopeFactory>(),
+            new Kidev { WorkerCount = 1 }.Freeze(), NullLogger<KidevRunner>.Instance);
+        await runner.StartAsync(CancellationToken.None);
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            completed.Task.IsCompleted.Should().BeFalse();
+            Task stopping = runner.StopAsync(CancellationToken.None);
+            stopping.IsCompleted.Should().BeFalse();
+            release.SetResult(true);
+            await stopping.WaitAsync(TimeSpan.FromSeconds(5));
+            completed.Task.IsCompletedSuccessfully.Should().BeTrue();
+            store.Process.Should().NotBeNull();
+            store.Process.StoppedAtUtc.Should().NotBeNull();
+        }
+        finally
+        {
+            release.TrySetResult(true);
+            await runner.StopAsync(CancellationToken.None);
+        }
     }
 
     /// <summary>
@@ -178,6 +274,27 @@ public sealed class KidevTests
         }
     }
 
+    private sealed class BlockingRunnerJobService(TaskCompletionSource<bool> entered, ManualResetEventSlim release)
+    {
+        public void Execute()
+        {
+            entered.SetResult(true);
+            if (!release.Wait(TimeSpan.FromSeconds(25)))
+            {
+                throw new TimeoutException("Test did not release synchronous work.");
+            }
+        }
+    }
+
+    private sealed class AsyncRunnerJobService(TaskCompletionSource<bool> entered, Task release)
+    {
+        public async Task ExecuteAsync()
+        {
+            entered.SetResult(true);
+            await release;
+        }
+    }
+
     private sealed class TestJobDefinitionStore(
         JobDefinition jobDefinition,
         TaskCompletionSource<(DateTimeOffset LastExecutedAtUtc, DateTimeOffset NextExecutionAtUtc)>? completionSource,
@@ -185,8 +302,36 @@ public sealed class KidevTests
     {
         private JobDefinition? nextJobDefinition = jobDefinition;
         private readonly Guid claimId = Guid.NewGuid();
+        private readonly ConcurrentDictionary<string, byte> _workers = new(StringComparer.Ordinal);
 
         public bool WasSynchronized { get; private set; }
+        public WorkerProcess? Process { get; private set; }
+        public TaskCompletionSource<bool> Heartbeat { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> AllWorkersClaimed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task RegisterProcessAsync(WorkerProcess process, CancellationToken cancellationToken)
+        {
+            WasSynchronized.Should().BeTrue();
+            Process = process;
+            return Task.CompletedTask;
+        }
+
+        public Task HeartbeatProcessAsync(string processInstanceId, DateTimeOffset utcNow, CancellationToken cancellationToken)
+        {
+            Process.Should().NotBeNull();
+            Process.Id.Should().Be(processInstanceId);
+            Process.LastHeartbeatAtUtc = utcNow;
+            Heartbeat.TrySetResult(true);
+            return Task.CompletedTask;
+        }
+
+        public Task StopProcessAsync(string processInstanceId, DateTimeOffset utcNow, CancellationToken cancellationToken)
+        {
+            Process.Should().NotBeNull();
+            Process.Id.Should().Be(processInstanceId);
+            Process.StoppedAtUtc = utcNow;
+            return Task.CompletedTask;
+        }
 
         public Task SynchronizeAsync(IReadOnlyList<JobDefinition> jobDefinitions, CancellationToken cancellationToken)
         {
@@ -205,8 +350,15 @@ public sealed class KidevTests
                 throw new InvalidOperationException("The runner queried jobs before synchronization completed.");
             }
 
-            JobDefinition? result = nextJobDefinition;
-            nextJobDefinition = null;
+            Process.Should().NotBeNull();
+            workerId.Should().StartWith(Process.Id + ":");
+            _workers.TryAdd(workerId, 0);
+            if (_workers.Count == Process.WorkerCount)
+            {
+                AllWorkersClaimed.TrySetResult(true);
+            }
+
+            JobDefinition? result = Interlocked.Exchange(ref nextJobDefinition, null);
             return Task.FromResult(result is null ? null : new ClaimedJob(result, claimId));
         }
 
@@ -226,6 +378,7 @@ public sealed class KidevTests
             DateTimeOffset nextExecutionAtUtc,
             CancellationToken cancellationToken)
         {
+            cancellationToken.IsCancellationRequested.Should().BeFalse();
             completionSource?.SetResult((lastExecutedAtUtc, nextExecutionAtUtc));
             return Task.CompletedTask;
         }

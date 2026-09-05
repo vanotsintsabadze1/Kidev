@@ -11,6 +11,43 @@ namespace Kidev.Storage.PostgreSQL;
 /// </summary>
 internal sealed class PostgreSqlJobDefinitionStore(KidevDbContext dbContext) : IJobDefinitionStore
 {
+    public async Task RegisterProcessAsync(WorkerProcess process, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        if (!Guid.TryParseExact(process.Id, "N", out Guid id) || id == Guid.Empty ||
+            !string.Equals(process.Id, id.ToString("N"), StringComparison.Ordinal))
+        {
+            throw new ArgumentException("Process identifiers must be nonempty canonical GUIDs in N format.", nameof(process));
+        }
+
+        if (string.IsNullOrWhiteSpace(process.Name) || string.IsNullOrWhiteSpace(process.MachineName) ||
+            process.Name.Length > 256 || process.MachineName.Length > 256 || process.WorkerCount < 1 ||
+            process.ProcessId < 1 || process.StartedAtUtc == default || process.StartedAtUtc.Offset != TimeSpan.Zero ||
+            process.LastHeartbeatAtUtc != process.StartedAtUtc || process.StoppedAtUtc is not null)
+        {
+            throw new ArgumentException("Invalid process registration metadata.", nameof(process));
+        }
+
+        dbContext.WorkerProcesses.Add(process);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public Task HeartbeatProcessAsync(string processInstanceId, DateTimeOffset utcNow, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(processInstanceId);
+        return dbContext.WorkerProcesses
+            .Where(process => process.Id == processInstanceId && process.StoppedAtUtc == null && process.LastHeartbeatAtUtc < utcNow)
+            .ExecuteUpdateAsync(update => update.SetProperty(process => process.LastHeartbeatAtUtc, utcNow), cancellationToken);
+    }
+
+    public Task StopProcessAsync(string processInstanceId, DateTimeOffset utcNow, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(processInstanceId);
+        return dbContext.WorkerProcesses
+            .Where(process => process.Id == processInstanceId && process.StoppedAtUtc == null && process.StartedAtUtc <= utcNow)
+            .ExecuteUpdateAsync(update => update.SetProperty(process => process.StoppedAtUtc, utcNow), cancellationToken);
+    }
+
     /// <inheritdoc />
     public async Task SynchronizeAsync(IReadOnlyList<JobDefinition> jobDefinitions, CancellationToken cancellationToken)
     {
@@ -272,10 +309,15 @@ internal sealed class PostgreSqlJobDefinitionStore(KidevDbContext dbContext) : I
     }
 
     /// <inheritdoc />
-    public Task DeleteExecutionHistoryAsync(DateTimeOffset completedBeforeUtc, CancellationToken cancellationToken)
+    public async Task DeleteExecutionHistoryAsync(DateTimeOffset completedBeforeUtc, CancellationToken cancellationToken)
     {
-        return dbContext.JobExecutions
+        await dbContext.JobExecutions
             .Where(execution => execution.CompletedAtUtc < completedBeforeUtc)
+            .ExecuteDeleteAsync(cancellationToken);
+        DateTimeOffset staleBeforeUtc = DateTimeOffset.UtcNow.AddSeconds(-30);
+        await dbContext.WorkerProcesses
+            .Where(process => process.LastHeartbeatAtUtc < completedBeforeUtc && process.LastHeartbeatAtUtc <= staleBeforeUtc &&
+                (process.StoppedAtUtc == null || process.StoppedAtUtc < completedBeforeUtc))
             .ExecuteDeleteAsync(cancellationToken);
     }
 

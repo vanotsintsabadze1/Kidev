@@ -1,0 +1,28 @@
+@model DashboardViewModel
+@{
+    ViewData["Title"] = "Failed";
+    ViewData["Description"] = "Inspect failed attempts without losing execution context.";
+    var incidents = Model.Executions.Where(item => item.Status is JobExecutionStatus.Failed or JobExecutionStatus.LeaseExpired).ToArray();
+    var groups = incidents.GroupBy(item => item.ErrorType ?? (item.Status == JobExecutionStatus.LeaseExpired ? "Lease expired" : "No error type recorded")).OrderByDescending(group => group.Count());
+}
+<div class="summary-strip"><div><span>Recorded failures</span><strong class="status-failed">@Model.Failed.ToString("N0")</strong></div><div><a asp-action="Jobs" asp-route-status="Expired">Expired leases</a><strong class="status-expired">@Model.Expired.ToString("N0")</strong></div><p>Counts describe execution attempts, not unique jobs. Expired includes running records past their lease.</p></div>
+@if (incidents.Length > 0)
+{
+    <section class="data-section"><header class="section-heading"><h2>Error types in returned history</h2></header><ul class="error-groups">
+        @foreach (var group in groups)
+        {
+            <li><code>@group.Key</code><span class="mono">@group.Count() <span class="muted">attempts</span></span></li>
+        }
+    </ul></section>
+}
+<section class="data-section"><header class="section-heading"><h2>Returned failed attempts</h2><span class="muted">Expand an attempt for its error summary</span></header>
+    @if (incidents.Length == 0)
+    {
+        <div class="empty-state"><span class="empty-track" aria-hidden="true"></span><h3>No failed attempts in this view</h3><p>No failed execution records were returned for this history window. Expired leases can be inspected separately.</p><a asp-action="Index">Return to overview</a></div>
+    }
+    else
+    {
+        <partial name="_Executions" model="new ExecutionHistoryViewModel { Executions = incidents, ObservedAtUtc = Model.ObservedAtUtc }" />
+    }
+    <partial name="_Pagination" model="Model" />
+</section>

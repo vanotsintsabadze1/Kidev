@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading;
@@ -22,8 +23,9 @@ internal sealed partial class KidevRunner(
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan ProcessHeartbeatInterval = TimeSpan.FromSeconds(10);
     private const int MaximumErrorMessageLength = 4_000;
-    private readonly string instanceId = Guid.NewGuid().ToString("N");
+    private readonly string _instanceId = Guid.NewGuid().ToString("N");
 
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -32,23 +34,72 @@ internal sealed partial class KidevRunner(
         {
             IJobDefinitionStore synchronizationStore = synchronizationScope.ServiceProvider.GetRequiredService<IJobDefinitionStore>();
             await synchronizationStore.SynchronizeAsync(registrationCatalog.JobDefinitions, stoppingToken);
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            using var process = Process.GetCurrentProcess();
+            await synchronizationStore.RegisterProcessAsync(new WorkerProcess
+            {
+                Id = _instanceId,
+                Name = Assembly.GetEntryAssembly()?.GetName().Name ?? "Kidev host",
+                MachineName = Environment.MachineName,
+                ProcessId = process.Id,
+                WorkerCount = registrationCatalog.WorkerCount,
+                StartedAtUtc = now,
+                LastHeartbeatAtUtc = now,
+            }, stoppingToken);
         }
 
+        using var backgroundCancellation = new CancellationTokenSource();
+        using var workerCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        Task heartbeatTask = MaintainProcessAsync(backgroundCancellation.Token);
+        Task maintenanceTask = RunMaintenanceAsync(backgroundCancellation.Token);
         var workers = new Task[registrationCatalog.WorkerCount];
-
         for (int workerIndex = 0; workerIndex < workers.Length; workerIndex++)
         {
-            workers[workerIndex] = RunWorkerAsync(workerIndex, stoppingToken);
+            int slot = workerIndex;
+            // Synchronous user methods must not prevent other slots or heartbeat loops from starting.
+            workers[workerIndex] = Task.Run(async () =>
+            {
+                try
+                {
+                    await RunWorkerAsync(slot, workerCancellation.Token);
+                }
+                catch
+                {
+                    workerCancellation.Cancel();
+                    throw;
+                }
+            }, CancellationToken.None);
         }
 
-        Task maintenanceTask = RunMaintenanceAsync(stoppingToken);
-        await Task.WhenAll(workers);
-        await maintenanceTask;
+        try
+        {
+            await Task.WhenAll(workers);
+        }
+        catch (OperationCanceledException) when (workerCancellation.IsCancellationRequested)
+        {
+            // Shutdown stops claims, but in-flight invocations retain their leases until they finish.
+        }
+        finally
+        {
+            backgroundCancellation.Cancel();
+            await Task.WhenAll(heartbeatTask, maintenanceTask);
+            using var stopTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                using IServiceScope scope = serviceScopeFactory.CreateScope();
+                await scope.ServiceProvider.GetRequiredService<IJobDefinitionStore>()
+                    .StopProcessAsync(_instanceId, DateTimeOffset.UtcNow, stopTimeout.Token);
+            }
+            catch (Exception exception)
+            {
+                LogProcessUpdateFailed(logger, exception);
+            }
+        }
     }
 
     private async Task RunWorkerAsync(int workerIndex, CancellationToken stoppingToken)
     {
-        string workerId = $"{instanceId}:{workerIndex}";
+        string workerId = FormattableString.Invariant($"{_instanceId}:{workerIndex}");
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -73,13 +124,13 @@ internal sealed partial class KidevRunner(
             JobDefinition jobDefinition = claimedJob.JobDefinition;
             LogJobClaimed(logger, jobDefinition.RegistrationKey, workerId, claimedJob.ClaimId);
 
-            using var heartbeatCancellationSource = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            using var heartbeatCancellationSource = new CancellationTokenSource();
             Task<bool> heartbeatTask = MaintainLeaseAsync(claimedJob, workerId, heartbeatCancellationSource.Token);
 
             try
             {
                 LogJobStarted(logger, jobDefinition.RegistrationKey, workerId, claimedJob.ClaimId);
-                ExecuteJob(jobDefinition);
+                await ExecuteJobAsync(jobDefinition);
             }
             catch (Exception exception)
             {
@@ -103,7 +154,7 @@ internal sealed partial class KidevRunner(
                         nextExecutionAtUtc,
                         jobException.GetType().FullName ?? jobException.GetType().Name,
                         LimitErrorMessage(jobException.Message),
-                        stoppingToken);
+                        CancellationToken.None);
                 }
 
                 LogJobFailed(logger, jobException, jobDefinition.RegistrationKey, workerId, claimedJob.ClaimId);
@@ -135,7 +186,7 @@ internal sealed partial class KidevRunner(
                     claimedJob.ClaimId,
                     completedAtUtc,
                     nextExecutionAtUtc,
-                    stoppingToken);
+                    CancellationToken.None);
                 LogJobCompleted(logger, jobDefinition.RegistrationKey, workerId, claimedJob.ClaimId);
             }
             catch (Exception exception)
@@ -169,6 +220,31 @@ internal sealed partial class KidevRunner(
             {
                 LogMaintenanceFailed(logger, exception);
             }
+        }
+    }
+
+    private async Task MaintainProcessAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(ProcessHeartbeatInterval, cancellationToken);
+                try
+                {
+                    using IServiceScope scope = serviceScopeFactory.CreateScope();
+                    await scope.ServiceProvider.GetRequiredService<IJobDefinitionStore>()
+                        .HeartbeatProcessAsync(_instanceId, DateTimeOffset.UtcNow, cancellationToken);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    LogProcessUpdateFailed(logger, exception);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Process heartbeat stops only after workers have drained.
         }
     }
 
@@ -239,7 +315,7 @@ internal sealed partial class KidevRunner(
             : errorMessage[..MaximumErrorMessageLength];
     }
 
-    private void ExecuteJob(JobDefinition jobDefinition)
+    private async Task ExecuteJobAsync(JobDefinition jobDefinition)
     {
         JobInvocation invocation = InvocationHelper.Create(jobDefinition);
 
@@ -255,9 +331,13 @@ internal sealed partial class KidevRunner(
             deserializedArguments[index] = invocation.Arguments[index].Deserialize(invocation.ParameterTypes[index]);
         }
 
-        using IServiceScope scope = serviceScopeFactory.CreateScope();
+        await using AsyncServiceScope scope = serviceScopeFactory.CreateAsyncScope();
         object service = scope.ServiceProvider.GetRequiredService(invocation.ServiceType);
-        invocation.Method.Invoke(service, deserializedArguments);
+        object? result = invocation.Method.Invoke(service, deserializedArguments);
+        if (result is Task task)
+        {
+            await task;
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Job {RegistrationKey} was claimed by worker {WorkerId} with claim {ClaimId}.")]
@@ -286,4 +366,7 @@ internal sealed partial class KidevRunner(
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Job execution maintenance failed.")]
     private static partial void LogMaintenanceFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Worker process registry update failed.")]
+    private static partial void LogProcessUpdateFailed(ILogger logger, Exception exception);
 }

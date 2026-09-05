@@ -11,6 +11,15 @@ namespace Kidev.Core;
 /// </summary>
 public interface IJobDefinitionStore
 {
+    /// <summary>Registers a unique host lifetime before starting its worker loops.</summary>
+    Task RegisterProcessAsync(WorkerProcess process, CancellationToken cancellationToken);
+
+    /// <summary>Updates a registered, non-stopped process heartbeat without changing job leases.</summary>
+    Task HeartbeatProcessAsync(string processInstanceId, DateTimeOffset utcNow, CancellationToken cancellationToken);
+
+    /// <summary>Records a graceful process stop after its worker loops finish.</summary>
+    Task StopProcessAsync(string processInstanceId, DateTimeOffset utcNow, CancellationToken cancellationToken);
+
     /// <summary>
     /// Synchronizes the job definitions registered during application startup with persistent storage.
     /// </summary>
@@ -80,7 +89,7 @@ public interface IJobDefinitionStore
     /// <returns>A task that represents the expiry sweep.</returns>
     Task ExpireLeasesAsync(DateTimeOffset utcNow, CancellationToken cancellationToken);
 
-    /// <summary>Deletes completed execution history older than the supplied UTC time.</summary>
+    /// <summary>Deletes completed execution history and inactive process registrations older than the supplied UTC time.</summary>
     /// <param name="completedBeforeUtc">The exclusive UTC cutoff time.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>A task that represents the cleanup operation.</returns>

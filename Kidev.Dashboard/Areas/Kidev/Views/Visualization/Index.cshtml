@@ -1,0 +1,61 @@
+@{
+    ViewData["Title"] = "Visualization";
+    ViewData["Description"] = "Live process, worker, and job activity. Observed snapshots, every 2 seconds.";
+}
+<link rel="stylesheet" href="~/_content/Kidev.Dashboard/css/factory.css" asp-append-version="true" />
+<section class="factory" data-factory data-snapshot-url="@Url.Action("Snapshot", "Visualization", new { area = "Kidev" })" data-details-url="@Url.Action("Details", "Dashboard", new { area = "Kidev", id = (int?)null })" data-mode="loading" aria-label="Live visualization">
+    <div class="factory-toolbar">
+        <div class="factory-feed"><span class="factory-feed-dot" aria-hidden="true"></span><strong data-factory-status role="status" aria-live="polite">Connecting</strong><span class="factory-observed" data-factory-observed>No snapshot yet</span></div>
+        <div class="inline-actions" data-factory-controls hidden>
+            <button class="button" type="button" data-factory-pause aria-pressed="false">Pause</button>
+            <button class="button" type="button" data-factory-refresh><partial name="_Icon" model='"refresh-cw"' /><span>Refresh</span></button>
+            <button class="button" type="button" data-factory-table-toggle aria-pressed="false" aria-controls="factory-table factory-viewport">Table view</button>
+        </div>
+    </div>
+    <div class="factory-notice" data-factory-notice hidden></div>
+    <div class="factory-notice factory-warning" data-factory-limit hidden>Bounded snapshot. Some records are not shown; counts describe this view, not system totals.</div>
+    <noscript><p class="factory-notice">Visualization requires JavaScript for live snapshots. <a asp-area="Kidev" asp-controller="Dashboard" asp-action="Jobs">Browse jobs</a> for the server-rendered alternative.</p></noscript>
+    <div class="factory-workspace">
+        <div class="factory-floor">
+            <div class="factory-ruler" aria-hidden="true"><span>01 / DISPATCH</span><span>02 / PROCESSING</span><span>03 / OUTCOMES</span></div>
+            <div class="factory-viewport" id="factory-viewport" tabindex="0" role="region" aria-label="Visualization schematic, scroll horizontally to explore" aria-describedby="factory-help" aria-busy="true">
+                <div class="factory-stage" data-factory-stage>
+                    <svg class="factory-connections" data-factory-connections aria-hidden="true" focusable="false"></svg>
+                    <section class="factory-lane factory-dispatch" aria-labelledby="factory-dispatch-title">
+                        <header class="factory-lane-heading"><h2 id="factory-dispatch-title">Dispatch</h2><span data-factory-pending-count class="mono">--</span></header>
+                        <p class="factory-lane-caption">Due &amp; scheduled definitions</p>
+                        <div class="factory-node-list" data-factory-pending></div>
+                        <p class="factory-empty" data-factory-pending-empty>Waiting for snapshot.</p>
+                    </section>
+                    <section class="factory-lane factory-processing" aria-labelledby="factory-process-title">
+                        <header class="factory-lane-heading"><h2 id="factory-process-title">Processes</h2><span data-factory-process-count class="mono">--</span></header>
+                        <p class="factory-lane-caption">Online instances / configured stations</p>
+                        <div class="factory-process-list" data-factory-processes></div>
+                        <p class="factory-empty" data-factory-process-empty>Reading the process registry.</p>
+                        <section class="factory-unregistered" data-factory-unregistered hidden><h3>Ownership unavailable</h3><p class="factory-lane-caption">Reported attempts owned by a process that is no longer online, or without a displayed registry slot. Capacity and idle state are unknown.</p><div class="factory-node-list" data-factory-unregistered-nodes></div></section>
+                    </section>
+                    <section class="factory-lane factory-outcomes" aria-labelledby="factory-outcomes-title">
+                        <header class="factory-lane-heading"><h2 id="factory-outcomes-title">Outcomes</h2><span data-factory-outcome-count class="mono">--</span></header>
+                        <p class="factory-lane-caption">Last minute / separate attempts</p>
+                        @foreach (var outcome in new[] { ("Succeeded", "Succeeded"), ("Failed", "Failed"), ("LeaseExpired", "Lease expired") })
+                        {
+                            <section class="factory-outcome-group" data-outcome="@outcome.Item1"><header><h3>@outcome.Item2</h3><span class="mono" data-outcome-count>--</span></header><div class="factory-node-list" data-outcome-nodes></div><p class="factory-empty" data-outcome-empty>Waiting for snapshot.</p></section>
+                        }
+                    </section>
+                </div>
+            </div>
+            <div class="factory-table table-scroll" id="factory-table" tabindex="0" role="region" aria-label="Visualization data table" hidden>
+                <table><caption class="visually-hidden">Same bounded snapshot: processes, worker slots, pending definitions, and current or recent attempts. Select a row to inspect.</caption><thead><tr><th scope="col">Kind / identity</th><th scope="col">State</th><th scope="col">Owner / method</th><th scope="col">Observed timing (UTC)</th></tr></thead><tbody data-factory-rows></tbody></table>
+            </div>
+            <div class="factory-legend" id="factory-help"><span><i class="factory-key factory-key-active" aria-hidden="true"></i>Moving dash: reported Running</span><span><i class="factory-key" aria-hidden="true"></i>Flash: newer heartbeat</span><span>Scroll to explore. Select a node to inspect.</span></div>
+        </div>
+        <aside class="factory-inspector" data-factory-inspector aria-labelledby="factory-inspector-title" hidden>
+            <header><div><span class="factory-lane-caption">INSPECTOR</span><h2 id="factory-inspector-title">Selection</h2></div><button class="button button-quiet" type="button" data-factory-close aria-label="Close inspector">Close</button></header>
+            <div data-factory-inspector-content></div>
+        </aside>
+    </div>
+    <p class="factory-footnote">Read-only telemetry. Lease expiry means ownership was lost, not that user code stopped. Intermediate states may occur between snapshots.</p>
+</section>
+@section Scripts {
+    <script src="~/_content/Kidev.Dashboard/js/factory.js" asp-append-version="true" defer></script>
+}

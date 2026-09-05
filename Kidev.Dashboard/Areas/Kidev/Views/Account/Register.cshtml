@@ -1,0 +1,16 @@
+@model RegisterViewModel
+@{
+    ViewData["Title"] = "Create account";
+    ViewData["Description"] = "Create another administrator account. The new account will have full dashboard access.";
+}
+<section class="panel registration-panel" aria-labelledby="register-title">
+    <header class="section-heading"><h2 id="register-title">Account details</h2><span class="muted">Restricted operation</span></header>
+    <form asp-controller="Account" asp-action="Register" method="post" class="stack-form">
+        <div asp-validation-summary="ModelOnly" class="validation-summary" role="alert"></div>
+        <div class="field"><label asp-for="Name">Name</label><input asp-for="Name" autocomplete="name" required aria-describedby="name-error" /><span asp-validation-for="Name" id="name-error" class="field-error"></span></div>
+        <div class="field"><label asp-for="Email">Email address</label><input asp-for="Email" type="email" autocomplete="username" required aria-describedby="email-error" /><span asp-validation-for="Email" id="email-error" class="field-error"></span></div>
+        <div class="field"><label asp-for="Password">Password</label><input asp-for="Password" type="password" autocomplete="new-password" required minlength="12" aria-describedby="password-help password-error" /><span id="password-help" class="field-help">At least 12 characters, with uppercase, lowercase, a number, a symbol and 4 unique characters.</span><span asp-validation-for="Password" id="password-error" class="field-error"></span></div>
+        <div class="field"><label asp-for="ConfirmPassword">Confirm password</label><input asp-for="ConfirmPassword" type="password" autocomplete="new-password" required aria-describedby="confirm-error" /><span asp-validation-for="ConfirmPassword" id="confirm-error" class="field-error"></span></div>
+        <div class="inline-actions"><button class="button button-primary" type="submit">Create account</button><a class="button button-quiet" asp-controller="Dashboard" asp-action="Settings">Cancel</a></div>
+    </form>
+</section>

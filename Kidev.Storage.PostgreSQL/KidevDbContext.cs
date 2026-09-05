@@ -18,6 +18,9 @@ internal sealed class KidevDbContext(DbContextOptions<KidevDbContext> options) :
     /// </summary>
     public DbSet<JobExecution> JobExecutions => Set<JobExecution>();
 
+    /// <summary>Gets registered host lifetimes and their independent heartbeats.</summary>
+    public DbSet<WorkerProcess> WorkerProcesses => Set<WorkerProcess>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

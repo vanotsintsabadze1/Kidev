@@ -1,0 +1,20 @@
+@model SignInViewModel
+@{
+    ViewData["Title"] = "Sign in";
+    ViewData["Standalone"] = true;
+}
+<div class="auth-tools"><button class="button button-quiet" type="button" data-theme-toggle hidden><partial name="_Icon" model='"sun-moon"' /><span data-button-label>Light theme</span></button></div>
+<section class="auth-panel" aria-labelledby="login-title">
+    <div class="auth-brand"><span class="brand-mark" aria-hidden="true"></span>Kidev<span class="brand-caption">CONTROL ROOM</span></div>
+    <div class="auth-heading"><h1 id="login-title">Sign in to operations</h1><p class="muted">Inspect schedules, execution history and worker activity.</p></div>
+    <form asp-controller="Account" asp-action="Login" method="post" class="stack-form">
+        <input asp-for="ReturnUrl" type="hidden" />
+        <div asp-validation-summary="ModelOnly" class="validation-summary" role="alert"></div>
+        <div class="field"><label asp-for="Email">Email address</label><input asp-for="Email" type="email" autocomplete="username" required aria-describedby="email-error" /><span asp-validation-for="Email" id="email-error" class="field-error"></span></div>
+        <div class="field"><label asp-for="Password">Password</label><input asp-for="Password" type="password" autocomplete="current-password" required aria-describedby="password-error" /><span asp-validation-for="Password" id="password-error" class="field-error"></span></div>
+        <label class="checkbox-field"><input asp-for="RememberMe" />Keep me signed in</label>
+        <button class="button button-primary" type="submit">Sign in</button>
+    </form>
+    <p class="auth-footnote">Administrator access required. Contact your administrator if you need access or a password reset.</p>
+</section>
+<div class="auth-caption"><span class="snapshot-mark" aria-hidden="true"></span>Schedules. Execution. Outcomes.</div>

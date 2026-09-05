@@ -15,7 +15,7 @@ namespace Kidev.Storage.PostgreSQL.Tests;
 /// <summary>
 /// Verifies PostgreSQL job definition persistence against a real database container.
 /// </summary>
-public sealed class PostgreSqlJobDefinitionStoreTests : IAsyncLifetime
+public sealed partial class PostgreSqlJobDefinitionStoreTests : IAsyncLifetime
 {
     private readonly PostgreSqlContainer database = new PostgreSqlBuilder("postgres:17-alpine").Build();
 

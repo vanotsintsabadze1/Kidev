@@ -1,0 +1,11 @@
+@{
+    ViewData["Title"] = "Access denied";
+    ViewData["Standalone"] = true;
+}
+<section class="auth-panel error-state" aria-labelledby="denied-title">
+    <div class="auth-brand"><span class="brand-mark" aria-hidden="true"></span>Kidev<span class="brand-caption">ACCESS CONTROL</span></div>
+    <span class="error-code mono">403 / Restricted</span>
+    <h1 id="denied-title">Administrator access required</h1>
+    <p>This account does not have permission to open the control room. Contact your administrator to request access.</p>
+    <form asp-controller="Account" asp-action="Logout" method="post"><button class="button button-primary" type="submit">Sign out</button></form>
+</section>

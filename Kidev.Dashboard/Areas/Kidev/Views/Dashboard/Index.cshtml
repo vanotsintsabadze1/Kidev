@@ -1,0 +1,27 @@
+@model DashboardViewModel
+@{
+    ViewData["Title"] = "Overview";
+    ViewData["Description"] = "Follow registered work from its schedule to its recorded outcome.";
+    var incidents = Model.Executions.Where(item => item.Status is JobExecutionStatus.Failed or JobExecutionStatus.LeaseExpired).Take(5).ToArray();
+}
+<partial name="_ProcessingFloor" model="Model" />
+<section class="data-section" aria-labelledby="recent-title">
+    <header class="section-heading"><div><h2 id="recent-title">Recent execution history</h2><p class="muted">Latest returned records, not a continuous event feed.</p></div><a asp-action="Jobs">Browse jobs <span aria-hidden="true">&rarr;</span></a></header>
+    <partial name="_Executions" model="new ExecutionHistoryViewModel { Executions = Model.Executions, ObservedAtUtc = Model.ObservedAtUtc }" />
+</section>
+<section class="data-section" aria-labelledby="attention-title">
+    <header class="section-heading"><h2 id="attention-title">Needs inspection</h2><a asp-action="Failed">Failure history <span aria-hidden="true">&rarr;</span></a></header>
+    @if (incidents.Length == 0)
+    {
+        <div class="inline-empty"><span class="status-dot success-dot" aria-hidden="true"></span>No failed or expired attempts in the recent records shown.</div>
+    }
+    else
+    {
+        <ul class="incident-list">
+        @foreach (var execution in incidents)
+        {
+            <li><partial name="_Status" model="execution.Status" /><a class="mono" asp-action="Details" asp-route-id="@execution.JobDefinitionId">Job #@execution.JobDefinitionId</a><span class="incident-message">@(execution.ErrorType ?? execution.Reason ?? "No summary recorded")</span><time class="mono muted" datetime="@execution.StartedAtUtc.ToString("O")">@execution.StartedAtUtc.ToUniversalTime().ToString("MM-dd HH:mm:ss")</time></li>
+        }
+        </ul>
+    }
+</section>

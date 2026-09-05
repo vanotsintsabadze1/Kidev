@@ -9,6 +9,19 @@ namespace Kidev.Storage.PostgreSQL;
 /// </summary>
 public static class KidevStorageServiceCollectionExtensions
 {
+    /// <summary>Registers read-only dashboard queries without a runner, catalog synchronization, or migrations.</summary>
+    /// <param name="services">The application services.</param>
+    /// <param name="connectionString">The workers' PostgreSQL connection string.</param>
+    /// <returns>The application services.</returns>
+    public static IServiceCollection AddKidevDashboardStorage(this IServiceCollection services, string connectionString)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+        services.AddDbContext<KidevDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddScoped<IDashboardQuery, PostgreSqlDashboardQuery>();
+        return services;
+    }
+
     /// <summary>
     /// Adds PostgreSQL storage used by Kidev to retrieve and update due jobs.
     /// </summary>
@@ -26,6 +39,7 @@ public static class KidevStorageServiceCollectionExtensions
 
         kidevBuilder.Services.AddDbContext<KidevDbContext>(options => options.UseNpgsql(connectionString));
         kidevBuilder.Services.AddScoped<IJobDefinitionStore, PostgreSqlJobDefinitionStore>();
+        kidevBuilder.Services.AddScoped<IDashboardQuery, PostgreSqlDashboardQuery>();
         return kidevBuilder.Services;
     }
 }

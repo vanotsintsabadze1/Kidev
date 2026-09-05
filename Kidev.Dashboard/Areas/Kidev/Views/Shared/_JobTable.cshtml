@@ -1,0 +1,33 @@
+@model DashboardViewModel
+@if (Model.Jobs.Count == 0)
+{
+    <div class="empty-state"><span class="empty-track" aria-hidden="true"></span><h3>No jobs in this view</h3><p>Adjust the filters, or register a job in the host application to populate the schedule.</p><a asp-controller="Dashboard" asp-action="Jobs">View all jobs</a></div>
+}
+else
+{
+    <div class="table-scroll" role="region" aria-label="Job definitions" tabindex="0">
+        <table>
+            <caption class="visually-hidden">Registered job definitions. Times shown in UTC.</caption>
+            <thead><tr><th scope="col">Job / registration key</th><th scope="col">Schedule state</th><th scope="col">Cron / time zone</th><th scope="col">Next execution (UTC)</th><th scope="col">Last completed (UTC)</th><th scope="col">Claimed by</th></tr></thead>
+            <tbody>
+            @foreach (var job in Model.Jobs)
+            {
+                var claimed = job.ClaimId.HasValue && job.LeaseExpiresAtUtc > Model.ObservedAtUtc;
+                var state = "Scheduled";
+                if (!job.IsEnabled) { state = "Disabled"; }
+                else if (claimed) { state = "Claimed"; }
+                else if (job.NextExecutionAtUtc <= Model.ObservedAtUtc) { state = "Due"; }
+                var tone = state switch { "Scheduled" => "scheduled", "Claimed" => "running", _ => "neutral" };
+                <tr>
+                    <td class="job-cell"><a class="job-name" asp-controller="Dashboard" asp-action="Details" asp-route-id="@job.Id" title="@job.ServiceTypeName">@job.MethodName</a><span class="cell-secondary mono">@job.RegistrationKey <span class="muted">#@job.Id</span></span></td>
+                    <td><span class="status status-@tone"><span class="status-dot" aria-hidden="true"></span>@state</span></td>
+                    <td><code>@job.CronExpression</code><span class="cell-secondary muted">@job.TimeZoneId</span></td>
+                    <td class="mono nowrap"><time datetime="@job.NextExecutionAtUtc.ToString("O")">@job.NextExecutionAtUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</time></td>
+                    <td class="mono nowrap">@(job.LastExecutedAtUtc?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "Not recorded")</td>
+                    <td class="mono">@(job.ClaimedBy ?? "Unclaimed")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}

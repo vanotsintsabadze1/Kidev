@@ -20,7 +20,7 @@ jobs:
 
       - run: dotnet restore Kidev.slnx
       - run: dotnet list Kidev.slnx package --vulnerable --include-transitive
-      - run: dotnet format Kidev.slnx --verify-no-changes --no-restore --exclude Kidev.Storage.PostgreSQL/Migrations
+      - run: dotnet format Kidev.slnx --verify-no-changes --no-restore --exclude Kidev.Storage.PostgreSQL/Migrations Kidev.Dashboard/Identity/Migrations
       - run: dotnet build Kidev.slnx --configuration Release --no-restore
       - run: dotnet test Kidev.slnx --configuration Release --no-build --collect:"XPlat Code Coverage" --results-directory TestResults
 

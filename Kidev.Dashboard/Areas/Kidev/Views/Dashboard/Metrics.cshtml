@@ -1,0 +1,29 @@
+@model DashboardViewModel
+@{
+    ViewData["Title"] = "Metrics";
+    ViewData["Description"] = "Recorded outcomes and durations, with explicit measurement scope.";
+    var completed = Model.Executions.Where(item => item.CompletedAtUtc.HasValue && item.CompletedAtUtc.Value >= item.StartedAtUtc).ToArray();
+    var slowest = completed.OrderByDescending(item => item.CompletedAtUtc.GetValueOrDefault() - item.StartedAtUtc).Take(8).ToArray();
+    var total = (decimal)Model.Running + Model.Succeeded + Model.Failed + Model.Expired;
+    var outcomes = new[] { ("Running", "running", Model.Running), ("Succeeded", "succeeded", Model.Succeeded), ("Failed", "failed", Model.Failed), ("Lease expired", "expired", Model.Expired) };
+}
+<section class="data-section" aria-labelledby="outcomes-title">
+    <header class="section-heading"><h2 id="outcomes-title">Execution record distribution</h2><span class="muted">Status and lease counts at observation time</span></header>
+    <div class="metric-bars">
+    @foreach (var outcome in outcomes)
+    {
+        var percent = total > 0 ? (100m * outcome.Item3 / total).ToString("0.##", CultureInfo.InvariantCulture) : "0";
+        <div class="metric-row"><span class="status status-@outcome.Item2"><span class="status-dot" aria-hidden="true"></span>@outcome.Item1</span><div class="metric-track" aria-hidden="true"><span class="metric-fill status-@outcome.Item2" style="width: @(percent)%"></span></div><strong class="mono">@outcome.Item3.ToString("N0")</strong></div>
+    }
+    </div>
+    <p class="panel-footnote">Running requires an unexpired lease. Expired includes running records whose lease has elapsed, even if their persisted status has not yet changed.</p>
+    @if (total == 0)
+    {
+        <p class="panel-footnote">No execution records are available yet.</p>
+    }
+</section>
+<section class="data-section" aria-labelledby="duration-title">
+    <header class="section-heading"><div><h2 id="duration-title">Longest durations in returned history</h2><p class="muted">Completed minus started, across @completed.Length completed records in this response. Not a system-wide ranking.</p></div></header>
+    <partial name="_Executions" model="new ExecutionHistoryViewModel { Executions = slowest, ObservedAtUtc = Model.ObservedAtUtc }" />
+</section>
+<p class="notice">Throughput, queue latency, utilization and historical time-series metrics are not collected here. Running attempts have no final duration.</p>
