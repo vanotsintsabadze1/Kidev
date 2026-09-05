@@ -3,4 +3,5 @@
   <Project Path="Kidev.Core.Tests/Kidev.Core.Tests.csproj" />
   <Project Path="Kidev.Dashboard/Kidev.Dashboard.csproj" />
   <Project Path="Kidev.Storage.PostgreSQL/Kidev.Storage.PostgreSQL.csproj" />
+  <Project Path="Kidev.Storage.PostgreSQL.Tests/Kidev.Storage.PostgreSQL.Tests.csproj" />
 </Solution>
