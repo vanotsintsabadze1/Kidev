@@ -16,6 +16,7 @@ Each entry must state the convention and, when useful, its scope or rationale.
 | Formatting | Define C# formatting in the repository-root `.editorconfig` and enforce formatting and analyzer violations in CI. Exclude EF-generated files under `Kidev.Storage.PostgreSQL/Migrations` from formatting and analyzers. |
 | Namespaces | Use file-scoped namespaces for new C# files unless a nested namespace is required. |
 | Local variables | Use `var` when the assigned expression makes the type obvious; otherwise use the explicit type. |
+| Member order | Declare fields and properties before constructors. |
 | Usings | Use global usings for common framework namespaces and file-level usings for all other namespaces. |
 | Asynchrony | Use asynchronous APIs end-to-end for naturally asynchronous work. Do not block on tasks; name asynchronous methods with the `Async` suffix. |
 | Cancellation | Accept and propagate `CancellationToken` through cancellable operations. Use `CancellationToken.None` only for intentionally non-cancellable work. |
