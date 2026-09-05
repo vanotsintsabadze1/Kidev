@@ -110,7 +110,7 @@ public sealed class PostgreSqlJobDefinitionStoreTests : IAsyncLifetime
         updatedJobDefinition.ArgumentsJson.Should().Be("[\"updated-arguments\"]");
         updatedJobDefinition.CronExpression.Should().Be("*/5 * * * *");
         updatedJobDefinition.IsEnabled.Should().BeTrue();
-        updatedJobDefinition.LastExecutedAtUtc.Should().Be(lastExecutedAtUtc);
+        updatedJobDefinition.LastExecutedAtUtc.Should().BeCloseTo(lastExecutedAtUtc, TimeSpan.FromMicroseconds(1));
         updatedJobDefinition.NextExecutionAtUtc.Should().BeAfter(synchronizedAtUtc);
         updatedJobDefinition.NextExecutionAtUtc.Should().NotBe(previousNextExecutionAtUtc);
         disabledJobDefinition.IsEnabled.Should().BeFalse();
