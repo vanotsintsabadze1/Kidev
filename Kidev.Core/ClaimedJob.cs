@@ -28,4 +28,5 @@ public sealed class ClaimedJob
     /// Gets the identifier that proves ownership of this execution attempt.
     /// </summary>
     public Guid ClaimId { get; }
+
 }
