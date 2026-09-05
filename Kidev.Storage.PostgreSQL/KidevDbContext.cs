@@ -13,6 +13,11 @@ internal sealed class KidevDbContext(DbContextOptions<KidevDbContext> options) :
     /// </summary>
     public DbSet<JobDefinition> JobDefinitions => Set<JobDefinition>();
 
+    /// <summary>
+    /// Gets persisted job execution attempts.
+    /// </summary>
+    public DbSet<JobExecution> JobExecutions => Set<JobExecution>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

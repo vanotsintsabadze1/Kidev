@@ -12,7 +12,12 @@ internal sealed class KidevRegistrationCatalog
 
     internal int WorkerCount { get; }
 
-    internal KidevRegistrationCatalog(IReadOnlyList<JobDefinition> sourceJobDefinitions, int workerCount)
+    internal TimeSpan ExecutionHistoryRetention { get; }
+
+    internal KidevRegistrationCatalog(
+        IReadOnlyList<JobDefinition> sourceJobDefinitions,
+        int workerCount,
+        TimeSpan executionHistoryRetention)
     {
         var copiedJobDefinitions = new JobDefinition[sourceJobDefinitions.Count];
 
@@ -37,5 +42,6 @@ internal sealed class KidevRegistrationCatalog
 
         jobDefinitions = Array.AsReadOnly(copiedJobDefinitions);
         WorkerCount = workerCount;
+        ExecutionHistoryRetention = executionHistoryRetention;
     }
 }

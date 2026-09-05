@@ -14,6 +14,7 @@ public sealed class Kidev
 {
     private readonly List<JobDefinition> jobDefinitions = [];
     private int workerCount = Math.Min(Environment.ProcessorCount, 4);
+    private TimeSpan executionHistoryRetention = TimeSpan.FromDays(14);
     private bool isFrozen;
 
     /// <summary>
@@ -32,6 +33,23 @@ public sealed class Kidev
             }
 
             workerCount = value;
+        }
+    }
+
+    /// <summary>Gets or sets how long completed execution history remains in storage.</summary>
+    public TimeSpan ExecutionHistoryRetention
+    {
+        get => executionHistoryRetention;
+        set
+        {
+            ThrowIfFrozen();
+
+            if (value <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), "Execution history retention must be positive.");
+            }
+
+            executionHistoryRetention = value;
         }
     }
 
@@ -114,7 +132,7 @@ public sealed class Kidev
         }
 
         isFrozen = true;
-        return new KidevRegistrationCatalog(jobDefinitions, workerCount);
+        return new KidevRegistrationCatalog(jobDefinitions, workerCount, executionHistoryRetention);
     }
 
     internal void SetCronExpression(JobDefinition jobDefinition, string cronExpression)

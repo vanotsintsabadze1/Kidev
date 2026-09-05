@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,6 +21,8 @@ internal sealed partial class KidevRunner(
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromMinutes(1);
+    private const int MaximumErrorMessageLength = 4_000;
     private readonly string instanceId = Guid.NewGuid().ToString("N");
 
     /// <inheritdoc />
@@ -38,7 +41,9 @@ internal sealed partial class KidevRunner(
             workers[workerIndex] = RunWorkerAsync(workerIndex, stoppingToken);
         }
 
+        Task maintenanceTask = RunMaintenanceAsync(stoppingToken);
         await Task.WhenAll(workers);
+        await maintenanceTask;
     }
 
     private async Task RunWorkerAsync(int workerIndex, CancellationToken stoppingToken)
@@ -75,16 +80,51 @@ internal sealed partial class KidevRunner(
             {
                 LogJobStarted(logger, jobDefinition.RegistrationKey, workerId, claimedJob.ClaimId);
                 ExecuteJob(jobDefinition);
-
+            }
+            catch (Exception exception)
+            {
+                Exception jobException = exception is TargetInvocationException { InnerException: not null } invocationException
+                    ? invocationException.InnerException
+                    : exception;
                 heartbeatCancellationSource.Cancel();
-                bool ownsClaim = await heartbeatTask;
+                bool failureOwnsClaim = await heartbeatTask;
 
-                if (!ownsClaim)
+                if (failureOwnsClaim)
                 {
-                    LogJobCompletionSkipped(logger, jobDefinition.RegistrationKey, workerId, claimedJob.ClaimId);
-                    continue;
+                    DateTimeOffset completedAtUtc = DateTimeOffset.UtcNow;
+                    DateTimeOffset nextExecutionAtUtc = GetNextExecutionAtUtc(jobDefinition, completedAtUtc);
+
+                    using IServiceScope failureScope = serviceScopeFactory.CreateScope();
+                    IJobDefinitionStore failureStore = failureScope.ServiceProvider.GetRequiredService<IJobDefinitionStore>();
+                    await failureStore.FailAsync(
+                        jobDefinition.Id,
+                        claimedJob.ClaimId,
+                        completedAtUtc,
+                        nextExecutionAtUtc,
+                        jobException.GetType().FullName ?? jobException.GetType().Name,
+                        LimitErrorMessage(jobException.Message),
+                        stoppingToken);
                 }
 
+                LogJobFailed(logger, jobException, jobDefinition.RegistrationKey, workerId, claimedJob.ClaimId);
+                continue;
+            }
+            finally
+            {
+                heartbeatCancellationSource.Cancel();
+                await heartbeatTask;
+            }
+
+            bool ownsClaim = await heartbeatTask;
+
+            if (!ownsClaim)
+            {
+                LogJobCompletionSkipped(logger, jobDefinition.RegistrationKey, workerId, claimedJob.ClaimId);
+                continue;
+            }
+
+            try
+            {
                 DateTimeOffset completedAtUtc = DateTimeOffset.UtcNow;
                 DateTimeOffset nextExecutionAtUtc = GetNextExecutionAtUtc(jobDefinition, completedAtUtc);
 
@@ -102,10 +142,32 @@ internal sealed partial class KidevRunner(
             {
                 LogJobFailed(logger, exception, jobDefinition.RegistrationKey, workerId, claimedJob.ClaimId);
             }
-            finally
+        }
+    }
+
+    private async Task RunMaintenanceAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
             {
-                heartbeatCancellationSource.Cancel();
-                await heartbeatTask;
+                await Task.Delay(MaintenanceInterval, stoppingToken);
+                DateTimeOffset utcNow = DateTimeOffset.UtcNow;
+
+                using IServiceScope scope = serviceScopeFactory.CreateScope();
+                IJobDefinitionStore jobDefinitionStore = scope.ServiceProvider.GetRequiredService<IJobDefinitionStore>();
+                await jobDefinitionStore.ExpireLeasesAsync(utcNow, stoppingToken);
+                await jobDefinitionStore.DeleteExecutionHistoryAsync(
+                    utcNow.Subtract(registrationCatalog.ExecutionHistoryRetention),
+                    stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                LogMaintenanceFailed(logger, exception);
             }
         }
     }
@@ -170,6 +232,13 @@ internal sealed partial class KidevRunner(
         return interval > TimeSpan.FromSeconds(60) ? TimeSpan.FromSeconds(60) : interval;
     }
 
+    private static string LimitErrorMessage(string errorMessage)
+    {
+        return errorMessage.Length <= MaximumErrorMessageLength
+            ? errorMessage
+            : errorMessage[..MaximumErrorMessageLength];
+    }
+
     private void ExecuteJob(JobDefinition jobDefinition)
     {
         JobInvocation invocation = InvocationHelper.Create(jobDefinition);
@@ -214,4 +283,7 @@ internal sealed partial class KidevRunner(
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Worker {WorkerId} could not renew claim {ClaimId} for job {RegistrationKey}.")]
     private static partial void LogLeaseRenewalFailed(ILogger logger, Exception exception, string workerId, Guid claimId, string registrationKey);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Job execution maintenance failed.")]
+    private static partial void LogMaintenanceFailed(ILogger logger, Exception exception);
 }
