@@ -1,0 +1,7 @@
+@model DashboardViewModel
+@{
+    ViewData["Title"] = "Recurring";
+    ViewData["Description"] = "Application-registered cron schedules and their next execution times.";
+}
+<p class="notice">Schedules use each job's configured time zone. Registration and schedule changes are managed in the host application.</p>
+<section class="data-section"><header class="section-heading"><h2>Recurring definitions</h2><span class="muted">Cron expressions shown as registered</span></header><partial name="_JobTable" model="Model" /><partial name="_Pagination" model="Model" /></section>

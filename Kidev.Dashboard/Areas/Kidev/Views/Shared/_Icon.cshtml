@@ -1,0 +1,13 @@
+@model string
+@{
+    var icon = Model switch
+    {
+        "layout-dashboard" or "list-checks" or "repeat" or "calendar-clock" or "server" or "circle-x"
+            or "chart-no-axes-combined" or "settings" or "refresh-cw" or "menu" or "log-out" or "sun-moon" => Model,
+        _ => null
+    };
+}
+@if (icon is not null)
+{
+    <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="@Url.Content($"~/_content/Kidev.Dashboard/icons/lucide.svg#{icon}")"></use></svg>
+}

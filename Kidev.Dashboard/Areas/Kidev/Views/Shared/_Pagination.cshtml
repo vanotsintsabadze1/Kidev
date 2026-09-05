@@ -1,0 +1,23 @@
+@model DashboardViewModel
+@{
+    var action = ViewContext.RouteData.Values["action"]?.ToString();
+    var hasNextPage = action?.ToUpperInvariant() switch
+    {
+        "RECURRING" or "SCHEDULED" => Model.HasNextJobPage,
+        "WORKERS" or "FAILED" => Model.HasNextExecutionPage,
+        _ => Model.HasNextPage
+    };
+}
+<nav class="pagination" aria-label="Pagination">
+    <span class="muted">Page <span class="mono">@Model.Page</span></span>
+    <div class="inline-actions">
+        @if (Model.Page > 1)
+        {
+            <a class="button" asp-controller="Dashboard" asp-action="@action" asp-route-search="@Model.Search" asp-route-status="@Model.Status" asp-route-page="@(Model.Page - 1)" rel="prev">Previous</a>
+        }
+        @if (hasNextPage)
+        {
+            <a class="button" asp-controller="Dashboard" asp-action="@action" asp-route-search="@Model.Search" asp-route-status="@Model.Status" asp-route-page="@(Model.Page + 1)" rel="next">Next</a>
+        }
+    </div>
+</nav>

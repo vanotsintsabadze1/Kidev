@@ -1,0 +1,13 @@
+@model DashboardViewModel
+@{
+    ViewData["Title"] = "Settings";
+    ViewData["Description"] = "Dashboard preferences and administrator access.";
+}
+<section class="data-section settings-section" aria-labelledby="preferences-title">
+    <header class="section-heading"><h2 id="preferences-title">Display preferences</h2></header>
+    <div class="setting-row"><div><h3>Color theme</h3><p>Graphite by default. Your choice is saved in this browser when local storage is available.</p></div><button class="button" type="button" data-theme-toggle hidden><partial name="_Icon" model='"sun-moon"' /><span data-button-label>Light theme</span></button></div>
+    <div class="setting-row"><div><h3>Refresh behavior</h3><p>Operational pages support manual refresh and optional 15-second page refresh. Automatic refresh pauses while the tab is hidden, a form is being used, or execution details are open.</p></div></div>
+    <div class="setting-row"><div><h3>Timestamp display</h3><p>Execution and schedule timestamps are displayed in UTC. Cron schedules retain their configured time zone.</p></div><span class="mono">UTC</span></div>
+</section>
+<section class="data-section settings-section" aria-labelledby="access-title"><header class="section-heading"><h2 id="access-title">Access management</h2></header><div class="setting-row"><div><h3>Create an administrator account</h3><p>New accounts receive administrator access. Account creation is restricted to existing administrators; public registration is not available.</p></div><a class="button" asp-controller="Account" asp-action="Register">Create account</a></div></section>
+<p class="notice">Storage, worker configuration and job registration are managed by the host application. Connection credentials are never displayed here.</p>

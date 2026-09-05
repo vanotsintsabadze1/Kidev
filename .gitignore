@@ -482,3 +482,6 @@ $RECYCLE.BIN/
 *.swp
 
 graphify-out
+
+# Local-only end-to-end test application, credentials, logs, and database files
+/Kidev.TestApp/

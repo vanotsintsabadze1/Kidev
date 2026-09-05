@@ -195,6 +195,52 @@ namespace Kidev.Storage.PostgreSQL.Migrations
 
                     b.ToTable("job_executions", (string)null);
                 });
+
+            modelBuilder.Entity("Kidev.Core.Data.WorkerProcess", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("LastHeartbeatAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_heartbeat_at_utc");
+
+                    b.Property<string>("MachineName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("machine_name");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("ProcessId")
+                        .HasColumnType("integer")
+                        .HasColumnName("process_id");
+
+                    b.Property<DateTimeOffset>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at_utc");
+
+                    b.Property<DateTimeOffset?>("StoppedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("stopped_at_utc");
+
+                    b.Property<int>("WorkerCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("worker_count");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LastHeartbeatAtUtc");
+
+                    b.ToTable("worker_processes", (string)null);
+                });
 #pragma warning restore 612, 618
         }
     }

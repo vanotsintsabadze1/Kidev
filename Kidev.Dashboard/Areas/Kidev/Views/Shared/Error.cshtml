@@ -1,0 +1,11 @@
+@{
+    ViewData["Title"] = "Request unavailable";
+    ViewData["Standalone"] = true;
+}
+<section class="auth-panel error-state" aria-labelledby="error-title">
+    <div class="auth-brand"><span class="brand-mark" aria-hidden="true"></span>Kidev<span class="brand-caption">CONTROL ROOM</span></div>
+    <span class="error-code mono">Request interrupted</span>
+    <h1 id="error-title">The view could not be loaded</h1>
+    <p>No operational data is shown. Try opening the overview again. If the problem persists, ask your administrator to inspect the host application's logs.</p>
+    <a class="button button-primary" asp-controller="Dashboard" asp-action="Index">Return to overview</a>
+</section>

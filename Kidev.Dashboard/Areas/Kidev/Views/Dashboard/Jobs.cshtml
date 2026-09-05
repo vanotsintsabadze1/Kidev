@@ -1,0 +1,25 @@
+@model DashboardViewModel
+@{
+    ViewData["Title"] = "Jobs";
+    ViewData["Description"] = "Explore registered definitions and inspect their execution history.";
+}
+<form class="filter-bar" asp-controller="Dashboard" asp-action="Jobs" method="get" role="search">
+    <div class="field search-field"><label for="search">Search jobs</label><input id="search" name="search" value="@Model.Search" type="search" maxlength="200" placeholder="Registration key, service or method" /></div>
+    <div class="field">
+        <label for="status">State / recorded outcome</label>
+        <select id="status" asp-for="Status" name="status">
+            <option value="">All states</option>
+            <option value="Due">Due</option>
+            <option value="Running">Running</option>
+            <option value="Scheduled">Scheduled</option>
+            <option value="Disabled">Disabled</option>
+            <option value="Succeeded">Succeeded</option>
+            <option value="Failed">Failed</option>
+            <option value="Expired">Lease expired</option>
+        </select>
+    </div>
+    <button class="button button-primary" type="submit">Apply filters</button>
+    <a class="button button-quiet" asp-action="Jobs">Clear</a>
+</form>
+<section class="data-section"><header class="section-heading"><h2>Job definitions</h2><span class="muted">@Model.Jobs.Count shown</span></header><partial name="_JobTable" model="Model" /><partial name="_Pagination" model="Model" /></section>
+<section class="data-section"><header class="section-heading"><h2>Returned execution history</h2><span class="muted">Schedule state and execution outcome are independent</span></header><partial name="_Executions" model="new ExecutionHistoryViewModel { Executions = Model.Executions, ObservedAtUtc = Model.ObservedAtUtc }" /></section>

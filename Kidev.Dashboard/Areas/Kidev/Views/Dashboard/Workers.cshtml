@@ -1,0 +1,31 @@
+@model DashboardViewModel
+@{
+    ViewData["Title"] = "Workers";
+    ViewData["Description"] = "Worker identifiers observed in recent execution history.";
+    var workers = Model.Executions.GroupBy(item => item.WorkerId).OrderBy(group => group.Key).ToArray();
+}
+<p class="notice">Derived from returned recent execution history, filtered to running attempts with an unexpired lease at observation time. This is not a worker registry or a connectivity check. Capacity and uptime are not reported.</p>
+<section class="data-section" aria-labelledby="workers-title">
+    <header class="section-heading"><h2 id="workers-title">Observed worker stations</h2><span class="muted">@workers.Length identifiers / @Model.Executions.Count execution records</span></header>
+    @if (workers.Length == 0)
+    {
+        <div class="empty-state"><span class="empty-track" aria-hidden="true"></span><h3>No worker activity recorded</h3><p>Workers will appear here when their execution attempts are present in recent history.</p></div>
+    }
+    else
+    {
+        <div class="table-scroll" role="region" aria-label="Workers observed in recent execution history" tabindex="0">
+            <table>
+                <caption class="visually-hidden">Worker activity derived only from returned recent execution history.</caption>
+                <thead><tr><th scope="col">Worker station</th><th scope="col">Running records</th><th scope="col">Returned attempts</th><th scope="col">Latest heartbeat (UTC)</th><th scope="col">Latest attempt / outcome</th><th scope="col">Latest lease expiry (UTC)</th></tr></thead>
+                <tbody>
+                @foreach (var worker in workers)
+                {
+                    var latest = worker.OrderByDescending(item => item.StartedAtUtc).First();
+                    <tr><td class="mono worker-name"><span class="worker-station-mark" aria-hidden="true"></span>@(string.IsNullOrWhiteSpace(worker.Key) ? "Unspecified worker" : worker.Key)</td><td class="mono">@worker.Count(item => item.Status == JobExecutionStatus.Running)</td><td class="mono">@worker.Count()</td><td class="mono nowrap">@worker.Max(item => item.LastHeartbeatAtUtc).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</td><td><a class="mono" asp-action="Details" asp-route-id="@latest.JobDefinitionId">Job #@latest.JobDefinitionId</a><span class="cell-secondary"><partial name="_Status" model="latest.Status" /></span></td><td class="mono nowrap">@latest.LeaseExpiresAtUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+    <partial name="_Pagination" model="Model" />
+</section>

@@ -1,0 +1,13 @@
+@model JobExecutionStatus
+@{
+    var label = Model == JobExecutionStatus.LeaseExpired ? "Lease expired" : Model.ToString();
+    var tone = Model switch
+    {
+        JobExecutionStatus.Running => "running",
+        JobExecutionStatus.Succeeded => "succeeded",
+        JobExecutionStatus.Failed => "failed",
+        JobExecutionStatus.LeaseExpired => "expired",
+        _ => "neutral"
+    };
+}
+<span class="status status-@tone"><span class="status-dot" aria-hidden="true"></span>@label</span>

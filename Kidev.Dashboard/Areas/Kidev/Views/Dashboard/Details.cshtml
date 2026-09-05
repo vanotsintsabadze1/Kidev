@@ -1,0 +1,48 @@
+@model JobDetailsViewModel
+@{
+    ViewData["Title"] = Model.Job.MethodName;
+    ViewData["Description"] = "Job definition and recorded execution attempts.";
+    var latest = Model.Executions.OrderByDescending(item => item.StartedAtUtc).FirstOrDefault();
+}
+<div class="detail-context"><a asp-action="Jobs">&larr; All jobs</a><span class="mono muted">Job #@Model.Job.Id / @Model.Job.RegistrationKey</span></div>
+<section class="panel" aria-labelledby="definition-title">
+    <header class="section-heading"><h2 id="definition-title">Definition</h2><span class="status status-neutral"><span class="status-dot" aria-hidden="true"></span>@(Model.Job.IsEnabled ? "Enabled" : "Disabled")</span></header>
+    <dl class="definition-grid">
+        <div><dt>Service</dt><dd class="mono">@Model.Job.ServiceTypeName</dd></div>
+        <div><dt>Method</dt><dd class="mono">@Model.Job.MethodName</dd></div>
+        <div><dt>Assembly</dt><dd class="mono">@Model.Job.AssemblyName</dd></div>
+        <div><dt>Registration key</dt><dd class="mono">@Model.Job.RegistrationKey</dd></div>
+        <div><dt>Cron expression</dt><dd class="mono">@Model.Job.CronExpression</dd></div>
+        <div><dt>Schedule time zone</dt><dd>@Model.Job.TimeZoneId</dd></div>
+        <div><dt>Next execution (UTC)</dt><dd class="mono">@Model.Job.NextExecutionAtUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
+        <div><dt>Last completed (UTC)</dt><dd class="mono">@(Model.Job.LastExecutedAtUtc?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "Not recorded")</dd></div>
+        <div><dt>Current claim ID</dt><dd class="mono">@(Model.Job.ClaimId?.ToString() ?? "Unclaimed")</dd></div>
+        <div><dt>Claimed by</dt><dd class="mono">@(Model.Job.ClaimedBy ?? "Unclaimed")</dd></div>
+        <div><dt>Claimed at (UTC)</dt><dd class="mono">@(Model.Job.ClaimedAtUtc?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "Not recorded")</dd></div>
+        <div><dt>Claim lease expires (UTC)</dt><dd class="mono">@(Model.Job.LeaseExpiresAtUtc?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "Not recorded")</dd></div>
+    </dl>
+</section>
+@if (latest is not null)
+{
+    var status = latest.Status == JobExecutionStatus.Running && latest.LeaseExpiresAtUtc <= Model.ObservedAtUtc
+        ? JobExecutionStatus.LeaseExpired : latest.Status;
+    <section class="data-section" aria-labelledby="timeline-title">
+        <header class="section-heading"><h2 id="timeline-title">Latest attempt timeline</h2><span class="mono muted">Execution #@latest.Id</span></header>
+        <ol class="execution-timeline">
+            <li><span class="timeline-mark" aria-hidden="true"></span><strong>Started</strong><time class="mono" datetime="@latest.StartedAtUtc.ToString("O")">@latest.StartedAtUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</time><span class="muted mono">@latest.WorkerId</span></li>
+            <li><span class="timeline-mark" aria-hidden="true"></span><strong>Last recorded heartbeat</strong><time class="mono" datetime="@latest.LastHeartbeatAtUtc.ToString("O")">@latest.LastHeartbeatAtUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</time><span class="muted">Recorded lease renewal</span></li>
+            <li><span class="timeline-mark" aria-hidden="true"></span><partial name="_Status" model="status" />
+                @if (latest.CompletedAtUtc is { } completed)
+                {
+                    <time class="mono" datetime="@completed.ToString("O")">@completed.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</time>
+                }
+                else
+                {
+                    <span class="muted">No completion recorded</span>
+                }
+            </li>
+        </ol>
+    </section>
+}
+<section class="data-section" aria-labelledby="attempts-title"><header class="section-heading"><h2 id="attempts-title">Execution history</h2><span class="muted">@Model.Executions.Count returned attempts</span></header><partial name="_Executions" model="new ExecutionHistoryViewModel { Executions = Model.Executions, ObservedAtUtc = Model.ObservedAtUtc }" /></section>
+<p class="notice">Payload values are intentionally hidden. Logs, stack traces and retry controls are not available in this dashboard. Inspect recorded error summaries by expanding an execution attempt.</p>

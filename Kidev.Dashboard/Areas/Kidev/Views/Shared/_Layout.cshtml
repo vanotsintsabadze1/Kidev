@@ -1,0 +1,79 @@
+@{
+    var action = ViewContext.RouteData.Values["action"]?.ToString();
+    var controller = ViewContext.RouteData.Values["controller"]?.ToString();
+    var standalone = ViewData["Standalone"] is true;
+    var snapshot = Model as DashboardViewModel;
+    var pages = new[] { ("Dashboard", "Index", "Overview", "layout-dashboard"), ("Visualization", "Index", "Visualization", "server"), ("Dashboard", "Jobs", "Jobs", "list-checks"), ("Dashboard", "Recurring", "Recurring", "repeat"), ("Dashboard", "Scheduled", "Scheduled", "calendar-clock"), ("Dashboard", "Workers", "Workers", "server"), ("Dashboard", "Failed", "Failed", "circle-x"), ("Dashboard", "Metrics", "Metrics", "chart-no-axes-combined"), ("Dashboard", "Settings", "Settings", "settings") };
+}
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>@ViewData["Title"] | Kidev</title>
+    <script src="~/_content/Kidev.Dashboard/js/theme.js" asp-append-version="true"></script>
+    <link rel="stylesheet" href="~/_content/Kidev.Dashboard/css/dashboard.css" asp-append-version="true" />
+    <script src="~/_content/Kidev.Dashboard/js/dashboard.js" asp-append-version="true" defer></script>
+</head>
+<body class="@(standalone ? "auth-shell" : "app-shell")">
+    <a class="skip-link" href="#main">Skip to content</a>
+    @if (!standalone)
+    {
+        <aside class="sidebar" id="navigation">
+            <a class="brand" asp-controller="Dashboard" asp-action="Index"><span class="brand-mark" aria-hidden="true"></span>Kidev <span class="brand-caption">CONTROL ROOM</span></a>
+            <div class="sidebar-label">Operations</div>
+            <nav aria-label="Main navigation">
+                @foreach (var navPage in pages)
+                {
+                    var current = controller == navPage.Item1 && (action == navPage.Item2 || (action == "Details" && navPage.Item2 == "Jobs"));
+                    <a asp-area="Kidev" asp-controller="@navPage.Item1" asp-action="@navPage.Item2" class="nav-link @(current ? "is-current" : "")" aria-current="@(current ? "page" : null)"><partial name="_Icon" model="navPage.Item4" /><span>@navPage.Item3</span></a>
+                }
+            </nav>
+            <div class="sidebar-bottom">
+                <span class="sidebar-label">Administrator access</span>
+                <span class="user-identity">@User.Identity?.Name</span>
+                <div class="inline-actions">
+                    <button type="button" class="button" data-theme-toggle hidden><partial name="_Icon" model='"sun-moon"' /><span data-button-label>Light theme</span></button>
+                    <form asp-controller="Account" asp-action="Logout" method="post"><button class="button button-quiet" type="submit"><partial name="_Icon" model='"log-out"' /><span>Sign out</span></button></form>
+                </div>
+            </div>
+        </aside>
+    }
+    <div class="workspace">
+        @if (!standalone)
+        {
+            <header class="context-bar">
+                <button type="button" class="button mobile-menu" data-nav-toggle aria-controls="navigation" aria-expanded="false" hidden><partial name="_Icon" model='"menu"' /><span data-button-label>Menu</span></button>
+                <div class="breadcrumb"><span>Kidev</span><span aria-hidden="true">/</span><span>@ViewData["Title"]</span></div>
+                <span class="context-label">Job operations</span>
+            </header>
+        }
+        <main id="main" tabindex="-1" class="@(standalone ? "auth-main" : "main-content")">
+            @if (!standalone)
+            {
+                <div class="page-heading">
+                    <div><h1>@ViewData["Title"]</h1><p class="muted">@ViewData["Description"]</p></div>
+                    @if (snapshot is not null && action != "Settings")
+                    {
+                        <div class="refresh-controls" data-refresh-controls hidden>
+                            <button class="button" type="button" data-refresh><partial name="_Icon" model='"refresh-cw"' /><span data-button-label>Refresh</span></button>
+                            <button class="button" type="button" data-auto-refresh aria-pressed="false">Auto-refresh: off</button>
+                        </div>
+                    }
+                </div>
+                @if (snapshot is not null && action != "Settings")
+                {
+                    <div class="snapshot-line"><span class="snapshot-mark" aria-hidden="true"></span><span>Snapshot <time datetime="@snapshot.ObservedAtUtc.ToString("O")">@snapshot.ObservedAtUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</time></span><span data-refresh-status role="status">Manual refresh</span></div>
+                }
+            }
+            @RenderBody()
+        </main>
+        @if (!standalone)
+        {
+            <footer class="workspace-footer"><span>Kidev / background job scheduler</span><span>All timestamps UTC</span></footer>
+        }
+    </div>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

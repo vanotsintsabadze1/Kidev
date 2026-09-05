@@ -1,0 +1,6 @@
+@model DashboardViewModel
+@{
+    ViewData["Title"] = "Scheduled";
+    ViewData["Description"] = "Inspect the next execution recorded for each scheduled definition.";
+}
+<section class="data-section"><header class="section-heading"><h2>Schedule inspection</h2><a asp-action="Jobs" asp-route-status="due">Inspect due jobs <span aria-hidden="true">&rarr;</span></a></header><partial name="_JobTable" model="Model" /><partial name="_Pagination" model="Model" /></section>

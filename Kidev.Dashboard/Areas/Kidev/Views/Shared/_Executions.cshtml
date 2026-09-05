@@ -1,0 +1,46 @@
+@model ExecutionHistoryViewModel
+@if (Model.Executions.Count == 0)
+{
+    <div class="empty-state"><span class="empty-track" aria-hidden="true"></span><h3>No executions in this view</h3><p>Execution history appears here after a worker starts a registered job.</p></div>
+}
+else
+{
+    <div class="table-scroll" role="region" aria-label="Execution history" tabindex="0">
+        <table class="execution-table">
+            <caption class="visually-hidden">Recorded execution attempts. Expand an attempt for its recorded timestamps and error summary.</caption>
+            <thead><tr><th scope="col">Execution / job</th><th scope="col">Outcome</th><th scope="col">Started (UTC)</th><th scope="col">Completed (UTC)</th><th scope="col">Duration</th><th scope="col">Worker / attempt details</th></tr></thead>
+            <tbody>
+            @foreach (var execution in Model.Executions)
+            {
+                var status = execution.Status == JobExecutionStatus.Running && execution.LeaseExpiresAtUtc <= Model.ObservedAtUtc
+                    ? JobExecutionStatus.LeaseExpired : execution.Status;
+                <tr>
+                    <td class="mono">#@execution.Id <a class="cell-secondary" asp-controller="Dashboard" asp-action="Details" asp-route-id="@execution.JobDefinitionId">Job #@execution.JobDefinitionId</a></td>
+                    <td><partial name="_Status" model="status" /></td>
+                    <td class="mono nowrap"><time datetime="@execution.StartedAtUtc.ToString("O")">@execution.StartedAtUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</time></td>
+                    <td class="mono nowrap">@(execution.CompletedAtUtc?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "Not recorded")</td>
+                    <td class="mono nowrap">@(execution.CompletedAtUtc is { } completed ? (completed - execution.StartedAtUtc).TotalSeconds.ToString("N2") + " s" : "Not final")</td>
+                    <td>
+                        <details class="attempt-details">
+                            <summary><span class="mono">@execution.WorkerId</span><span class="cell-secondary muted">Inspect attempt</span></summary>
+                            <dl class="attempt-facts">
+                                <dt>Claim ID</dt><dd class="mono">@execution.ClaimId</dd>
+                                <dt>Last heartbeat (UTC)</dt><dd class="mono">@execution.LastHeartbeatAtUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd>
+                                <dt>Lease expires (UTC)</dt><dd class="mono">@execution.LeaseExpiresAtUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd>
+                                @if (!string.IsNullOrWhiteSpace(execution.Reason))
+                                {
+                                    <dt>Reason</dt><dd>@execution.Reason</dd>
+                                }
+                            </dl>
+                            @if (!string.IsNullOrWhiteSpace(execution.ErrorType) || !string.IsNullOrWhiteSpace(execution.ErrorMessage))
+                            {
+                                <div class="error-summary"><strong class="mono">@execution.ErrorType</strong><p>@execution.ErrorMessage</p></div>
+                            }
+                        </details>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}

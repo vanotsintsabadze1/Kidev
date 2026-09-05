@@ -1,0 +1,17 @@
+@model DashboardViewModel
+<section class="panel processing-floor" aria-labelledby="floor-title">
+    <header class="section-heading"><h2 id="floor-title">Processing floor</h2><span class="muted">Scheduling / execution / outcomes</span></header>
+    <div class="floor-scroll" role="region" aria-label="Job processing lifecycle" tabindex="0">
+        <div class="floor-grid">
+            <a class="floor-station station-scheduled" asp-controller="Dashboard" asp-action="Recurring"><span class="station-index">01 / Upstream</span><h3>Registered</h3><strong class="station-count">@Model.TotalJobs.ToString("N0")</strong><span class="station-caption">registered definitions</span><span class="station-link">Inspect definitions <span aria-hidden="true">&rarr;</span></span></a>
+            <span class="floor-connector" aria-hidden="true">&rarr;</span>
+            <a class="floor-station station-due" asp-controller="Dashboard" asp-action="Jobs" asp-route-status="due"><span class="station-index">02 / Ready</span><h3>Due</h3><strong class="station-count">@Model.DueJobs.ToString("N0")</strong><span class="station-caption">jobs due for execution</span><span class="station-link">Inspect due jobs <span aria-hidden="true">&rarr;</span></span></a>
+            <span class="floor-connector" aria-hidden="true">&rarr;</span>
+            <a class="floor-station station-running" asp-controller="Dashboard" asp-action="Jobs" asp-route-status="running"><span class="station-index">03 / Processing</span><h3>Running</h3><strong class="station-count">@Model.Running.ToString("N0")</strong><span class="station-caption">execution records</span><span class="station-link">Inspect jobs <span aria-hidden="true">&rarr;</span></span></a>
+            <span class="floor-connector" aria-hidden="true">&rarr;</span>
+            <div class="floor-station station-succeeded"><span class="station-index">04 / Completed</span><h3>Succeeded</h3><strong class="station-count">@Model.Succeeded.ToString("N0")</strong><span class="station-caption">execution records</span><a class="station-link" asp-controller="Dashboard" asp-action="Metrics">Inspect outcomes <span aria-hidden="true">&rarr;</span></a></div>
+            <div class="floor-branch"><span class="branch-label">From processing / exception path</span><a asp-controller="Dashboard" asp-action="Failed" class="branch-outcome"><span class="status status-failed"><span class="status-dot" aria-hidden="true"></span>Failed</span><strong>@Model.Failed.ToString("N0")</strong></a><a asp-controller="Dashboard" asp-action="Jobs" asp-route-status="Expired" class="branch-outcome"><span class="status status-expired"><span class="status-dot" aria-hidden="true"></span>Lease expired</span><strong>@Model.Expired.ToString("N0")</strong></a></div>
+        </div>
+    </div>
+    <p class="panel-footnote">Upstream counts all registered definitions, including disabled jobs. Running counts unexpired execution leases; expired includes elapsed leases still marked running. Outcomes are history, not real-time movement.</p>
+</section>
