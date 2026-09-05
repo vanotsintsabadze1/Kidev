@@ -93,6 +93,42 @@ public sealed class KidevTests
     }
 
     /// <summary>
+    /// Verifies the runner records invocation failures and advances the schedule.
+    /// </summary>
+    [Fact]
+    public async Task RunnerRecordsFailedJobExecution()
+    {
+        var failureCompletionSource = new TaskCompletionSource<(string ErrorType, string ErrorMessage)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var jobDefinition = new JobDefinition
+        {
+            RegistrationKey = "failing-job",
+            ServiceTypeName = typeof(IFailingRunnerJobService).AssemblyQualifiedName!,
+            MethodName = nameof(IFailingRunnerJobService.Execute),
+            MethodParameterTypesJson = "[]",
+            ArgumentsJson = "[]",
+            CronExpression = "*/1 * * * *",
+            NextExecutionAtUtc = DateTimeOffset.UtcNow
+        };
+        var services = new ServiceCollection();
+        services.AddScoped<IFailingRunnerJobService>(_ => new FailingRunnerJobService());
+        services.AddSingleton<IJobDefinitionStore>(new TestJobDefinitionStore(jobDefinition, null, failureCompletionSource));
+
+        await using ServiceProvider serviceProvider = services.BuildServiceProvider();
+        using var runner = new KidevRunner(
+            serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+            new Kidev().Freeze(),
+            NullLogger<KidevRunner>.Instance);
+
+        await runner.StartAsync(CancellationToken.None);
+
+        (string errorType, string errorMessage) = await failureCompletionSource.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await runner.StopAsync(CancellationToken.None);
+
+        errorType.Should().Be(typeof(InvalidOperationException).FullName);
+        errorMessage.Should().Be("Expected job failure.");
+    }
+
+    /// <summary>
     /// Defines a service shape used to inspect a registered method call.
     /// </summary>
     private interface IJobService
@@ -117,6 +153,15 @@ public sealed class KidevTests
         void Execute(string schedule);
     }
 
+    /// <summary>
+    /// Defines a job service that fails while executing.
+    /// </summary>
+    private interface IFailingRunnerJobService
+    {
+        /// <summary>Throws an expected test exception.</summary>
+        void Execute();
+    }
+
     private sealed class RunnerJobService(TaskCompletionSource<string> completionSource) : IRunnerJobService
     {
         public void Execute(string schedule)
@@ -125,9 +170,18 @@ public sealed class KidevTests
         }
     }
 
+    private sealed class FailingRunnerJobService : IFailingRunnerJobService
+    {
+        public void Execute()
+        {
+            throw new InvalidOperationException("Expected job failure.");
+        }
+    }
+
     private sealed class TestJobDefinitionStore(
         JobDefinition jobDefinition,
-        TaskCompletionSource<(DateTimeOffset LastExecutedAtUtc, DateTimeOffset NextExecutionAtUtc)> completionSource) : IJobDefinitionStore
+        TaskCompletionSource<(DateTimeOffset LastExecutedAtUtc, DateTimeOffset NextExecutionAtUtc)>? completionSource,
+        TaskCompletionSource<(string ErrorType, string ErrorMessage)>? failureCompletionSource = null) : IJobDefinitionStore
     {
         private JobDefinition? nextJobDefinition = jobDefinition;
         private readonly Guid claimId = Guid.NewGuid();
@@ -172,7 +226,23 @@ public sealed class KidevTests
             DateTimeOffset nextExecutionAtUtc,
             CancellationToken cancellationToken)
         {
-            completionSource.SetResult((lastExecutedAtUtc, nextExecutionAtUtc));
+            completionSource?.SetResult((lastExecutedAtUtc, nextExecutionAtUtc));
+            return Task.CompletedTask;
+        }
+
+        public Task FailAsync(int jobId, Guid claimId, DateTimeOffset completedAtUtc, DateTimeOffset nextExecutionAtUtc, string errorType, string errorMessage, CancellationToken cancellationToken)
+        {
+            failureCompletionSource?.SetResult((errorType, errorMessage));
+            return Task.CompletedTask;
+        }
+
+        public Task ExpireLeasesAsync(DateTimeOffset utcNow, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteExecutionHistoryAsync(DateTimeOffset completedBeforeUtc, CancellationToken cancellationToken)
+        {
             return Task.CompletedTask;
         }
     }

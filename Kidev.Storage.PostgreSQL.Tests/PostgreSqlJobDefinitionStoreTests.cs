@@ -197,6 +197,113 @@ public sealed class PostgreSqlJobDefinitionStoreTests : IAsyncLifetime
         completedJobDefinition.ClaimedAtUtc.Should().BeNull();
         completedJobDefinition.LeaseExpiresAtUtc.Should().BeNull();
         completedJobDefinition.LastExecutedAtUtc.Should().BeCloseTo(completedAtUtc, TimeSpan.FromMicroseconds(1));
+        JobExecution execution = await assertionContext.JobExecutions.SingleAsync(CancellationToken.None);
+        execution.ClaimId.Should().Be(claimedJob.ClaimId);
+        execution.WorkerId.Should().Be("instance-a:0");
+        execution.LastHeartbeatAtUtc.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
+        execution.LeaseExpiresAtUtc.Should().BeCloseTo(renewedLeaseExpiresAtUtc, TimeSpan.FromMicroseconds(1));
+        execution.CompletedAtUtc.Should().BeCloseTo(completedAtUtc, TimeSpan.FromMicroseconds(1));
+        execution.Status.Should().Be(JobExecutionStatus.Succeeded);
+    }
+
+    /// <summary>
+    /// Verifies failed claims clear the lease, preserve failure details, and advance the schedule.
+    /// </summary>
+    [Fact]
+    public async Task FailAsyncCompletesExecutionAsFailed()
+    {
+        ClaimedJob claimedJob = await ClaimDueJobAsync();
+        DateTimeOffset completedAtUtc = DateTimeOffset.UtcNow;
+        DateTimeOffset nextExecutionAtUtc = completedAtUtc.AddHours(1);
+
+        await using (KidevDbContext failureContext = CreateDbContext())
+        {
+            var failureStore = new PostgreSqlJobDefinitionStore(failureContext);
+            await failureStore.FailAsync(
+                claimedJob.JobDefinition.Id,
+                claimedJob.ClaimId,
+                completedAtUtc,
+                nextExecutionAtUtc,
+                "System.InvalidOperationException",
+                "Job failed.",
+                CancellationToken.None);
+        }
+
+        await using KidevDbContext assertionContext = CreateDbContext();
+        JobDefinition jobDefinition = await assertionContext.JobDefinitions.SingleAsync(CancellationToken.None);
+        JobExecution execution = await assertionContext.JobExecutions.SingleAsync(CancellationToken.None);
+        jobDefinition.ClaimId.Should().BeNull();
+        jobDefinition.NextExecutionAtUtc.Should().BeCloseTo(nextExecutionAtUtc, TimeSpan.FromMicroseconds(1));
+        execution.Status.Should().Be(JobExecutionStatus.Failed);
+        execution.CompletedAtUtc.Should().BeCloseTo(completedAtUtc, TimeSpan.FromMicroseconds(1));
+        execution.ErrorType.Should().Be("System.InvalidOperationException");
+        execution.ErrorMessage.Should().Be("Job failed.");
+    }
+
+    /// <summary>
+    /// Verifies expired running executions are finalized and completed history can be removed.
+    /// </summary>
+    [Fact]
+    public async Task ExpireLeasesAndDeleteExecutionHistoryAsyncFinalizeAndRemoveHistory()
+    {
+        ClaimedJob claimedJob = await ClaimDueJobAsync();
+        DateTimeOffset utcNow = DateTimeOffset.UtcNow;
+
+        await using (KidevDbContext expiryContext = CreateDbContext())
+        {
+            JobExecution runningExecution = await expiryContext.JobExecutions.SingleAsync(CancellationToken.None);
+            runningExecution.LeaseExpiresAtUtc = utcNow.AddMinutes(-1);
+            await expiryContext.SaveChangesAsync(CancellationToken.None);
+
+            var expiryStore = new PostgreSqlJobDefinitionStore(expiryContext);
+            await expiryStore.ExpireLeasesAsync(utcNow, CancellationToken.None);
+        }
+
+        await using (KidevDbContext assertionContext = CreateDbContext())
+        {
+            JobExecution execution = await assertionContext.JobExecutions.SingleAsync(CancellationToken.None);
+            execution.ClaimId.Should().Be(claimedJob.ClaimId);
+            execution.Status.Should().Be(JobExecutionStatus.LeaseExpired);
+            execution.CompletedAtUtc.Should().BeCloseTo(utcNow, TimeSpan.FromMicroseconds(1));
+            execution.Reason.Should().Be("Lease expired.");
+        }
+
+        await using (KidevDbContext deletionContext = CreateDbContext())
+        {
+            var deletionStore = new PostgreSqlJobDefinitionStore(deletionContext);
+            await deletionStore.DeleteExecutionHistoryAsync(utcNow.AddMinutes(1), CancellationToken.None);
+        }
+
+        await using KidevDbContext finalContext = CreateDbContext();
+        (await finalContext.JobExecutions.CountAsync(CancellationToken.None)).Should().Be(0);
+    }
+
+    private async Task<ClaimedJob> ClaimDueJobAsync()
+    {
+        JobDefinition registeredJobDefinition = CreateJobDefinition("daily-report", "0 * * * *");
+
+        await using (KidevDbContext synchronizationContext = CreateDbContext())
+        {
+            var synchronizationStore = new PostgreSqlJobDefinitionStore(synchronizationContext);
+            await synchronizationStore.SynchronizeAsync([registeredJobDefinition], CancellationToken.None);
+        }
+
+        await using (KidevDbContext dueJobContext = CreateDbContext())
+        {
+            JobDefinition dueJobDefinition = await dueJobContext.JobDefinitions.SingleAsync(CancellationToken.None);
+            dueJobDefinition.NextExecutionAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
+            await dueJobContext.SaveChangesAsync(CancellationToken.None);
+        }
+
+        await using KidevDbContext claimContext = CreateDbContext();
+        var claimStore = new PostgreSqlJobDefinitionStore(claimContext);
+        ClaimedJob? claimedJob = await claimStore.ClaimNextDueAsync(
+            "instance-a:0",
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromMinutes(5),
+            CancellationToken.None);
+        claimedJob.Should().NotBeNull();
+        return claimedJob;
     }
 
     private KidevDbContext CreateDbContext()

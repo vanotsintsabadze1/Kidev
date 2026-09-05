@@ -62,4 +62,27 @@ public interface IJobDefinitionStore
         DateTimeOffset lastExecutedAtUtc,
         DateTimeOffset nextExecutionAtUtc,
         CancellationToken cancellationToken);
+
+    /// <summary>Records a failed execution, clears its lease, and advances its schedule.</summary>
+    /// <param name="jobId">The database identifier of the failed job.</param>
+    /// <param name="claimId">The identifier of the failed execution attempt.</param>
+    /// <param name="completedAtUtc">The UTC time at which execution failed.</param>
+    /// <param name="nextExecutionAtUtc">The UTC time at which the job is next due.</param>
+    /// <param name="errorType">The exception type.</param>
+    /// <param name="errorMessage">The limited exception message.</param>
+    /// <param name="cancellationToken">The token used to cancel the operation.</param>
+    /// <returns>A task that represents the failure update.</returns>
+    Task FailAsync(int jobId, Guid claimId, DateTimeOffset completedAtUtc, DateTimeOffset nextExecutionAtUtc, string errorType, string errorMessage, CancellationToken cancellationToken);
+
+    /// <summary>Marks running executions whose leases have expired.</summary>
+    /// <param name="utcNow">The current UTC time.</param>
+    /// <param name="cancellationToken">The token used to cancel the operation.</param>
+    /// <returns>A task that represents the expiry sweep.</returns>
+    Task ExpireLeasesAsync(DateTimeOffset utcNow, CancellationToken cancellationToken);
+
+    /// <summary>Deletes completed execution history older than the supplied UTC time.</summary>
+    /// <param name="completedBeforeUtc">The exclusive UTC cutoff time.</param>
+    /// <param name="cancellationToken">The token used to cancel the operation.</param>
+    /// <returns>A task that represents the cleanup operation.</returns>
+    Task DeleteExecutionHistoryAsync(DateTimeOffset completedBeforeUtc, CancellationToken cancellationToken);
 }

@@ -82,6 +82,7 @@ internal sealed class PostgreSqlJobDefinitionStore(KidevDbContext dbContext) : I
 
         var claimId = Guid.NewGuid();
         DateTimeOffset leaseExpiresAtUtc = utcNow.Add(leaseDuration);
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         List<JobDefinition> claimedJobDefinitions = await dbContext.JobDefinitions
             .FromSqlInterpolated($"""
                 WITH candidate AS (
@@ -107,7 +108,26 @@ internal sealed class PostgreSqlJobDefinitionStore(KidevDbContext dbContext) : I
             .ToListAsync(cancellationToken);
 
         JobDefinition? claimedJobDefinition = claimedJobDefinitions.SingleOrDefault();
-        return claimedJobDefinition is null ? null : new ClaimedJob(claimedJobDefinition, claimId);
+
+        if (claimedJobDefinition is null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return null;
+        }
+
+        dbContext.JobExecutions.Add(new JobExecution
+        {
+            JobDefinitionId = claimedJobDefinition.Id,
+            ClaimId = claimId,
+            WorkerId = workerId,
+            StartedAtUtc = utcNow,
+            LastHeartbeatAtUtc = utcNow,
+            LeaseExpiresAtUtc = leaseExpiresAtUtc,
+            Status = JobExecutionStatus.Running
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new ClaimedJob(claimedJobDefinition, claimId);
     }
 
     /// <inheritdoc />
@@ -117,13 +137,35 @@ internal sealed class PostgreSqlJobDefinitionStore(KidevDbContext dbContext) : I
         DateTimeOffset leaseExpiresAtUtc,
         CancellationToken cancellationToken)
     {
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         int affectedRows = await dbContext.JobDefinitions
             .Where(job => job.Id == jobId && job.ClaimId == claimId)
             .ExecuteUpdateAsync(
                 update => update.SetProperty(job => job.LeaseExpiresAtUtc, leaseExpiresAtUtc),
                 cancellationToken);
 
-        return affectedRows == 1;
+        if (affectedRows == 0)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return false;
+        }
+
+        DateTimeOffset heartbeatAtUtc = DateTimeOffset.UtcNow;
+        int updatedExecutions = await dbContext.JobExecutions
+            .Where(execution => execution.ClaimId == claimId && execution.Status == JobExecutionStatus.Running)
+            .ExecuteUpdateAsync(
+                update => update
+                    .SetProperty(execution => execution.LastHeartbeatAtUtc, heartbeatAtUtc)
+                    .SetProperty(execution => execution.LeaseExpiresAtUtc, leaseExpiresAtUtc),
+                cancellationToken);
+
+        if (updatedExecutions != 1)
+        {
+            throw new InvalidOperationException($"The execution history for claim '{claimId}' no longer exists.");
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 
     /// <inheritdoc />
@@ -134,6 +176,7 @@ internal sealed class PostgreSqlJobDefinitionStore(KidevDbContext dbContext) : I
         DateTimeOffset nextExecutionAtUtc,
         CancellationToken cancellationToken)
     {
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         int affectedRows = await dbContext.JobDefinitions
             .Where(job => job.Id == jobId && job.ClaimId == claimId && job.LeaseExpiresAtUtc > lastExecutedAtUtc)
             .ExecuteUpdateAsync(
@@ -150,6 +193,90 @@ internal sealed class PostgreSqlJobDefinitionStore(KidevDbContext dbContext) : I
         {
             throw new InvalidOperationException($"The claim '{claimId}' no longer owns job '{jobId}'.");
         }
+
+        int updatedExecutions = await dbContext.JobExecutions
+            .Where(execution => execution.ClaimId == claimId && execution.Status == JobExecutionStatus.Running)
+            .ExecuteUpdateAsync(
+                update => update
+                    .SetProperty(execution => execution.CompletedAtUtc, lastExecutedAtUtc)
+                    .SetProperty(execution => execution.Status, JobExecutionStatus.Succeeded),
+                cancellationToken);
+
+        if (updatedExecutions != 1)
+        {
+            throw new InvalidOperationException($"The execution history for claim '{claimId}' no longer exists.");
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task FailAsync(
+        int jobId,
+        Guid claimId,
+        DateTimeOffset completedAtUtc,
+        DateTimeOffset nextExecutionAtUtc,
+        string errorType,
+        string errorMessage,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorMessage);
+
+        await using IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        int affectedRows = await dbContext.JobDefinitions
+            .Where(job => job.Id == jobId && job.ClaimId == claimId && job.LeaseExpiresAtUtc > completedAtUtc)
+            .ExecuteUpdateAsync(
+                update => update
+                    .SetProperty(job => job.NextExecutionAtUtc, nextExecutionAtUtc)
+                    .SetProperty(job => job.ClaimId, (Guid?)null)
+                    .SetProperty(job => job.ClaimedBy, (string?)null)
+                    .SetProperty(job => job.ClaimedAtUtc, (DateTimeOffset?)null)
+                    .SetProperty(job => job.LeaseExpiresAtUtc, (DateTimeOffset?)null),
+                cancellationToken);
+
+        if (affectedRows == 0)
+        {
+            throw new InvalidOperationException($"The claim '{claimId}' no longer owns job '{jobId}'.");
+        }
+
+        int updatedExecutions = await dbContext.JobExecutions
+            .Where(execution => execution.ClaimId == claimId && execution.Status == JobExecutionStatus.Running)
+            .ExecuteUpdateAsync(
+                update => update
+                    .SetProperty(execution => execution.CompletedAtUtc, completedAtUtc)
+                    .SetProperty(execution => execution.Status, JobExecutionStatus.Failed)
+                    .SetProperty(execution => execution.ErrorType, errorType)
+                    .SetProperty(execution => execution.ErrorMessage, errorMessage),
+                cancellationToken);
+
+        if (updatedExecutions != 1)
+        {
+            throw new InvalidOperationException($"The execution history for claim '{claimId}' no longer exists.");
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task ExpireLeasesAsync(DateTimeOffset utcNow, CancellationToken cancellationToken)
+    {
+        return dbContext.JobExecutions
+            .Where(execution => execution.Status == JobExecutionStatus.Running && execution.LeaseExpiresAtUtc <= utcNow)
+            .ExecuteUpdateAsync(
+                update => update
+                    .SetProperty(execution => execution.CompletedAtUtc, utcNow)
+                    .SetProperty(execution => execution.Status, JobExecutionStatus.LeaseExpired)
+                    .SetProperty(execution => execution.Reason, "Lease expired."),
+                cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task DeleteExecutionHistoryAsync(DateTimeOffset completedBeforeUtc, CancellationToken cancellationToken)
+    {
+        return dbContext.JobExecutions
+            .Where(execution => execution.CompletedAtUtc < completedBeforeUtc)
+            .ExecuteDeleteAsync(cancellationToken);
     }
 
     private static JobDefinition CreateNewJobDefinition(JobDefinition registeredJobDefinition, DateTimeOffset utcNow)
