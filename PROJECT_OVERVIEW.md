@@ -59,8 +59,9 @@ Submit job -> Persist job -> Runner claims job -> Execute job
 - Enabled jobs are retrieved through a PostgreSQL partial index ordered by next execution time and ID; cron expressions are parsed only when calculating the next occurrence.
 - `Kidev.Storage.PostgreSQL` keeps its EF Core context and due-job store internal. Applications configure the storage through `services.AddPostgreSqlStorage(connectionString)`; its schema migration and model snapshot ship under `Migrations`.
 - `Kidev.Dashboard` is an empty Razor component library scaffold.
-- No database synchronization, next-execution updates, hosting application, or dashboard job-status UI exists yet.
+- Registered jobs are synchronized to PostgreSQL when `KidevRunner` starts. New jobs receive their first scheduled execution time, changed schedules are recalculated, and jobs removed from registration are disabled.
+- No hosting application or dashboard job-status UI exists yet.
 
 ## Implementation Direction
 
-Build vertically in MVP-sized increments. Add database synchronization next, then runner claiming/execution, and finally dashboard visibility. Keep interfaces limited to persistence and hosting boundaries where substitution is required.
+Build vertically in MVP-sized increments. Add runner claiming and failure handling next, then dashboard visibility. Keep interfaces limited to persistence and hosting boundaries where substitution is required.

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Kidev.Core.Data;
@@ -10,6 +11,14 @@ namespace Kidev.Core;
 /// </summary>
 public interface IJobDefinitionStore
 {
+    /// <summary>
+    /// Synchronizes the job definitions registered during application startup with persistent storage.
+    /// </summary>
+    /// <param name="jobDefinitions">The immutable set of registered job definitions.</param>
+    /// <param name="cancellationToken">The token used to cancel the operation.</param>
+    /// <returns>A task that represents the synchronization operation.</returns>
+    Task SynchronizeAsync(IReadOnlyList<JobDefinition> jobDefinitions, CancellationToken cancellationToken);
+
     /// <summary>
     /// Gets the next enabled job whose scheduled execution time has arrived.
     /// </summary>

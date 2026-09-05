@@ -69,6 +69,6 @@ Only direct service method calls with constant arguments are currently supported
 ## Current State
 
 - Build-time registration, cron builders, PostgreSQL entity mapping, and the initial EF Core migration exist.
-- Database synchronization, due-job execution, and dashboard views are still being built.
+- Database synchronization and initial due-job execution are implemented. Failure handling, atomic job claiming, and dashboard views are still being built.
 
 See [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) for the current architecture and MVP scope.

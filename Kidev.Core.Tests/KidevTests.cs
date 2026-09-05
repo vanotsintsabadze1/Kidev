@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -73,7 +74,8 @@ public sealed class KidevTests
         services.AddSingleton<IJobDefinitionStore>(new TestJobDefinitionStore(jobDefinition, jobCompletionSource));
 
         await using ServiceProvider serviceProvider = services.BuildServiceProvider();
-        var runner = new KidevRunner(serviceProvider.GetRequiredService<IServiceScopeFactory>());
+        KidevRegistrationCatalog registrationCatalog = new Kidev().Freeze();
+        var runner = new KidevRunner(serviceProvider.GetRequiredService<IServiceScopeFactory>(), registrationCatalog);
 
         await runner.StartAsync(CancellationToken.None);
 
@@ -83,6 +85,7 @@ public sealed class KidevTests
 
         executionArgument.Should().Be("daily");
         nextExecutionAtUtc.Should().BeAfter(lastExecutedAtUtc);
+        ((TestJobDefinitionStore)serviceProvider.GetRequiredService<IJobDefinitionStore>()).WasSynchronized.Should().BeTrue();
     }
 
     /// <summary>
@@ -124,8 +127,21 @@ public sealed class KidevTests
     {
         private JobDefinition? nextJobDefinition = jobDefinition;
 
+        public bool WasSynchronized { get; private set; }
+
+        public Task SynchronizeAsync(IReadOnlyList<JobDefinition> jobDefinitions, CancellationToken cancellationToken)
+        {
+            WasSynchronized = true;
+            return Task.CompletedTask;
+        }
+
         public Task<JobDefinition?> GetNextDueAsync(DateTimeOffset utcNow, CancellationToken cancellationToken)
         {
+            if (!WasSynchronized)
+            {
+                throw new InvalidOperationException("The runner queried jobs before synchronization completed.");
+            }
+
             JobDefinition? result = nextJobDefinition;
             nextJobDefinition = null;
             return Task.FromResult(result);

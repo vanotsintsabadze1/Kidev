@@ -12,13 +12,21 @@ namespace Kidev.Core;
 /// <summary>
 /// Runs core background work for the lifetime of the host.
 /// </summary>
-internal sealed class KidevRunner(IServiceScopeFactory serviceScopeFactory) : BackgroundService
+internal sealed class KidevRunner(
+    IServiceScopeFactory serviceScopeFactory,
+    KidevRegistrationCatalog registrationCatalog) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
 
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        using (IServiceScope synchronizationScope = serviceScopeFactory.CreateScope())
+        {
+            IJobDefinitionStore synchronizationStore = synchronizationScope.ServiceProvider.GetRequiredService<IJobDefinitionStore>();
+            await synchronizationStore.SynchronizeAsync(registrationCatalog.JobDefinitions, stoppingToken);
+        }
+
         while (!stoppingToken.IsCancellationRequested)
         {
             JobDefinition? jobDefinition;
