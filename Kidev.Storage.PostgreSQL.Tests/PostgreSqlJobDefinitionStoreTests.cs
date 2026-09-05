@@ -151,7 +151,7 @@ public sealed class PostgreSqlJobDefinitionStoreTests : IAsyncLifetime
         }
 
         firstClaim.Should().NotBeNull();
-        ClaimedJob claimedJob = firstClaim!;
+        ClaimedJob claimedJob = firstClaim;
 
         await using (KidevDbContext secondWorkerContext = CreateDbContext())
         {

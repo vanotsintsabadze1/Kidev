@@ -76,7 +76,7 @@ public sealed class KidevTests
 
         await using ServiceProvider serviceProvider = services.BuildServiceProvider();
         KidevRegistrationCatalog registrationCatalog = new Kidev().Freeze();
-        var runner = new KidevRunner(
+        using var runner = new KidevRunner(
             serviceProvider.GetRequiredService<IServiceScopeFactory>(),
             registrationCatalog,
             NullLogger<KidevRunner>.Instance);
@@ -95,7 +95,7 @@ public sealed class KidevTests
     /// <summary>
     /// Defines a service shape used to inspect a registered method call.
     /// </summary>
-    public interface IJobService
+    private interface IJobService
     {
         /// <summary>
         /// Sends a digest with a supplied frequency and maximum item count.
@@ -108,7 +108,7 @@ public sealed class KidevTests
     /// <summary>
     /// Defines a service shape used to execute a persisted job definition.
     /// </summary>
-    public interface IRunnerJobService
+    private interface IRunnerJobService
     {
         /// <summary>
         /// Executes the persisted job payload.
