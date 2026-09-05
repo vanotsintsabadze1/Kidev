@@ -13,7 +13,27 @@ namespace Kidev.Core;
 public sealed class Kidev
 {
     private readonly List<JobDefinition> jobDefinitions = [];
+    private int workerCount = Math.Min(Environment.ProcessorCount, 4);
     private bool isFrozen;
+
+    /// <summary>
+    /// Gets or sets the number of concurrent workers that execute Kidev jobs in this application instance.
+    /// </summary>
+    public int WorkerCount
+    {
+        get => workerCount;
+        set
+        {
+            ThrowIfFrozen();
+
+            if (value < 1)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), "Worker count must be at least one.");
+            }
+
+            workerCount = value;
+        }
+    }
 
     /// <summary>
     /// Registers a service method as a recurring job.
@@ -94,7 +114,7 @@ public sealed class Kidev
         }
 
         isFrozen = true;
-        return new KidevRegistrationCatalog(jobDefinitions);
+        return new KidevRegistrationCatalog(jobDefinitions, workerCount);
     }
 
     internal void SetCronExpression(JobDefinition jobDefinition, string cronExpression)

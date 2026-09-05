@@ -3,6 +3,7 @@ using System;
 using Kidev.Storage.PostgreSQL;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Kidev.Storage.PostgreSQL.Migrations
 {
     [DbContext(typeof(KidevDbContext))]
-    partial class KidevDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260905155119_AddJobLeases")]
+    partial class AddJobLeases
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

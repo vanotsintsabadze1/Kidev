@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Kidev.Core;
 using Kidev.Core.Data;
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
@@ -114,6 +115,88 @@ public sealed class PostgreSqlJobDefinitionStoreTests : IAsyncLifetime
         updatedJobDefinition.NextExecutionAtUtc.Should().BeAfter(synchronizedAtUtc);
         updatedJobDefinition.NextExecutionAtUtc.Should().NotBe(previousNextExecutionAtUtc);
         disabledJobDefinition.IsEnabled.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Verifies only one worker can claim a due job and that its owner can renew and complete the claim.
+    /// </summary>
+    [Fact]
+    public async Task ClaimNextDueAsyncClaimsJobForOneWorker()
+    {
+        JobDefinition registeredJobDefinition = CreateJobDefinition("daily-report", "0 * * * *");
+
+        await using (KidevDbContext synchronizationContext = CreateDbContext())
+        {
+            var synchronizationStore = new PostgreSqlJobDefinitionStore(synchronizationContext);
+            await synchronizationStore.SynchronizeAsync([registeredJobDefinition], CancellationToken.None);
+        }
+
+        await using (KidevDbContext dueJobContext = CreateDbContext())
+        {
+            JobDefinition dueJobDefinition = await dueJobContext.JobDefinitions.SingleAsync(CancellationToken.None);
+            dueJobDefinition.NextExecutionAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
+            await dueJobContext.SaveChangesAsync(CancellationToken.None);
+        }
+
+        ClaimedJob? firstClaim;
+
+        await using (KidevDbContext firstWorkerContext = CreateDbContext())
+        {
+            var firstWorkerStore = new PostgreSqlJobDefinitionStore(firstWorkerContext);
+            firstClaim = await firstWorkerStore.ClaimNextDueAsync(
+                "instance-a:0",
+                DateTimeOffset.UtcNow,
+                TimeSpan.FromMinutes(5),
+                CancellationToken.None);
+        }
+
+        firstClaim.Should().NotBeNull();
+        ClaimedJob claimedJob = firstClaim!;
+
+        await using (KidevDbContext secondWorkerContext = CreateDbContext())
+        {
+            var secondWorkerStore = new PostgreSqlJobDefinitionStore(secondWorkerContext);
+            ClaimedJob? secondClaim = await secondWorkerStore.ClaimNextDueAsync(
+                "instance-a:1",
+                DateTimeOffset.UtcNow,
+                TimeSpan.FromMinutes(5),
+                CancellationToken.None);
+            secondClaim.Should().BeNull();
+        }
+
+        DateTimeOffset renewedLeaseExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(5);
+
+        await using (KidevDbContext heartbeatContext = CreateDbContext())
+        {
+            var heartbeatStore = new PostgreSqlJobDefinitionStore(heartbeatContext);
+            bool renewed = await heartbeatStore.RenewLeaseAsync(
+                claimedJob.JobDefinition.Id,
+                claimedJob.ClaimId,
+                renewedLeaseExpiresAtUtc,
+                CancellationToken.None);
+            renewed.Should().BeTrue();
+        }
+
+        DateTimeOffset completedAtUtc = DateTimeOffset.UtcNow;
+
+        await using (KidevDbContext completionContext = CreateDbContext())
+        {
+            var completionStore = new PostgreSqlJobDefinitionStore(completionContext);
+            await completionStore.CompleteAsync(
+                claimedJob.JobDefinition.Id,
+                claimedJob.ClaimId,
+                completedAtUtc,
+                completedAtUtc.AddHours(1),
+                CancellationToken.None);
+        }
+
+        await using KidevDbContext assertionContext = CreateDbContext();
+        JobDefinition completedJobDefinition = await assertionContext.JobDefinitions.SingleAsync(CancellationToken.None);
+        completedJobDefinition.ClaimId.Should().BeNull();
+        completedJobDefinition.ClaimedBy.Should().BeNull();
+        completedJobDefinition.ClaimedAtUtc.Should().BeNull();
+        completedJobDefinition.LeaseExpiresAtUtc.Should().BeNull();
+        completedJobDefinition.LastExecutedAtUtc.Should().BeCloseTo(completedAtUtc, TimeSpan.FromMicroseconds(1));
     }
 
     private KidevDbContext CreateDbContext()

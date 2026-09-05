@@ -8,7 +8,11 @@ internal sealed class KidevRegistrationCatalog
 {
     private readonly IReadOnlyList<JobDefinition> jobDefinitions;
 
-    internal KidevRegistrationCatalog(IReadOnlyList<JobDefinition> sourceJobDefinitions)
+    internal IReadOnlyList<JobDefinition> JobDefinitions => jobDefinitions;
+
+    internal int WorkerCount { get; }
+
+    internal KidevRegistrationCatalog(IReadOnlyList<JobDefinition> sourceJobDefinitions, int workerCount)
     {
         var copiedJobDefinitions = new JobDefinition[sourceJobDefinitions.Count];
 
@@ -32,7 +36,6 @@ internal sealed class KidevRegistrationCatalog
         }
 
         jobDefinitions = Array.AsReadOnly(copiedJobDefinitions);
+        WorkerCount = workerCount;
     }
-
-    internal IReadOnlyList<JobDefinition> JobDefinitions => jobDefinitions;
 }

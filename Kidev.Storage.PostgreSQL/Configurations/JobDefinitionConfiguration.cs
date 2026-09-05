@@ -69,12 +69,30 @@ internal sealed class JobDefinitionConfiguration : IEntityTypeConfiguration<JobD
             .HasColumnType("timestamp with time zone")
             .IsRequired();
 
+        builder.Property(job => job.ClaimId)
+            .HasColumnName("claim_id");
+
+        builder.Property(job => job.ClaimedBy)
+            .HasColumnName("claimed_by")
+            .HasMaxLength(256);
+
+        builder.Property(job => job.ClaimedAtUtc)
+            .HasColumnName("claimed_at_utc")
+            .HasColumnType("timestamp with time zone");
+
+        builder.Property(job => job.LeaseExpiresAtUtc)
+            .HasColumnName("lease_expires_at_utc")
+            .HasColumnType("timestamp with time zone");
+
         builder.Property(job => job.IsEnabled)
             .HasColumnName("is_enabled")
             .HasDefaultValue(true)
             .IsRequired();
 
         builder.HasIndex(job => new { job.NextExecutionAtUtc, job.Id }, "ix_job_definitions_due")
+            .HasFilter("is_enabled = true");
+
+        builder.HasIndex(job => new { job.NextExecutionAtUtc, job.LeaseExpiresAtUtc, job.Id }, "ix_job_definitions_claimable")
             .HasFilter("is_enabled = true");
     }
 }

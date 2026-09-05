@@ -61,30 +61,89 @@ internal sealed class PostgreSqlJobDefinitionStore(KidevDbContext dbContext) : I
     }
 
     /// <inheritdoc />
-    public Task<JobDefinition?> GetNextDueAsync(DateTimeOffset utcNow, CancellationToken cancellationToken)
+    public async Task<ClaimedJob?> ClaimNextDueAsync(
+        string workerId,
+        DateTimeOffset utcNow,
+        TimeSpan leaseDuration,
+        CancellationToken cancellationToken)
     {
-        return dbContext.JobDefinitions
+        ArgumentException.ThrowIfNullOrWhiteSpace(workerId);
+
+        if (leaseDuration <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(leaseDuration), "Lease duration must be positive.");
+        }
+
+        var claimId = Guid.NewGuid();
+        DateTimeOffset leaseExpiresAtUtc = utcNow.Add(leaseDuration);
+        List<JobDefinition> claimedJobDefinitions = await dbContext.JobDefinitions
+            .FromSqlInterpolated($"""
+                WITH candidate AS (
+                    SELECT id
+                    FROM job_definitions
+                    WHERE is_enabled
+                        AND next_execution_at_utc <= {utcNow}
+                        AND (lease_expires_at_utc IS NULL OR lease_expires_at_utc <= {utcNow})
+                    ORDER BY next_execution_at_utc, id
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT 1
+                )
+                UPDATE job_definitions AS jobs
+                SET claim_id = {claimId},
+                    claimed_by = {workerId},
+                    claimed_at_utc = {utcNow},
+                    lease_expires_at_utc = {leaseExpiresAtUtc}
+                FROM candidate
+                WHERE jobs.id = candidate.id
+                RETURNING jobs.*
+                """)
             .AsNoTracking()
-            .Where(job => job.IsEnabled && job.NextExecutionAtUtc <= utcNow)
-            .OrderBy(job => job.NextExecutionAtUtc)
-            .ThenBy(job => job.Id)
-            .FirstOrDefaultAsync(cancellationToken);
+            .ToListAsync(cancellationToken);
+
+        JobDefinition? claimedJobDefinition = claimedJobDefinitions.SingleOrDefault();
+        return claimedJobDefinition is null ? null : new ClaimedJob(claimedJobDefinition, claimId);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> RenewLeaseAsync(
+        int jobId,
+        Guid claimId,
+        DateTimeOffset leaseExpiresAtUtc,
+        CancellationToken cancellationToken)
+    {
+        int affectedRows = await dbContext.JobDefinitions
+            .Where(job => job.Id == jobId && job.ClaimId == claimId)
+            .ExecuteUpdateAsync(
+                update => update.SetProperty(job => job.LeaseExpiresAtUtc, leaseExpiresAtUtc),
+                cancellationToken);
+
+        return affectedRows == 1;
     }
 
     /// <inheritdoc />
     public async Task CompleteAsync(
         int jobId,
+        Guid claimId,
         DateTimeOffset lastExecutedAtUtc,
         DateTimeOffset nextExecutionAtUtc,
         CancellationToken cancellationToken)
     {
-        await dbContext.JobDefinitions
-            .Where(job => job.Id == jobId)
+        int affectedRows = await dbContext.JobDefinitions
+            .Where(job => job.Id == jobId && job.ClaimId == claimId && job.LeaseExpiresAtUtc > lastExecutedAtUtc)
             .ExecuteUpdateAsync(
                 update => update
                     .SetProperty(job => job.LastExecutedAtUtc, lastExecutedAtUtc)
-                    .SetProperty(job => job.NextExecutionAtUtc, nextExecutionAtUtc),
+                    .SetProperty(job => job.NextExecutionAtUtc, nextExecutionAtUtc)
+                    .SetProperty(job => job.ClaimId, (Guid?)null)
+                    .SetProperty(job => job.ClaimedBy, (string?)null)
+                    .SetProperty(job => job.ClaimedAtUtc, (DateTimeOffset?)null)
+                    .SetProperty(job => job.LeaseExpiresAtUtc, (DateTimeOffset?)null),
                 cancellationToken);
+
+        if (affectedRows == 0)
+        {
+            throw new InvalidOperationException($"The claim '{claimId}' no longer owns job '{jobId}'.");
+        }
     }
 
     private static JobDefinition CreateNewJobDefinition(JobDefinition registeredJobDefinition, DateTimeOffset utcNow)

@@ -63,6 +63,26 @@ public sealed class JobDefinition
     public DateTimeOffset NextExecutionAtUtc { get; set; }
 
     /// <summary>
+    /// Gets or sets the identifier for the worker attempt that currently owns this job.
+    /// </summary>
+    public Guid? ClaimId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the worker that currently owns this job.
+    /// </summary>
+    public string? ClaimedBy { get; set; }
+
+    /// <summary>
+    /// Gets or sets the UTC time at which the current worker claimed this job.
+    /// </summary>
+    public DateTimeOffset? ClaimedAtUtc { get; set; }
+
+    /// <summary>
+    /// Gets or sets the UTC time at which the current claim expires unless it is renewed.
+    /// </summary>
+    public DateTimeOffset? LeaseExpiresAtUtc { get; set; }
+
+    /// <summary>
     /// Gets or sets a value indicating whether the job is eligible for execution.
     /// </summary>
     public bool IsEnabled { get; set; } = true;

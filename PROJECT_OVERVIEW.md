@@ -53,10 +53,10 @@ Submit job -> Persist job -> Runner claims job -> Execute job
 
 ## Current State
 
-- `Kidev.Core` contains `KidevRunner`, a hosted service that retrieves due jobs through the persistence boundary and invokes their registered service methods through DI using reflection.
+- `Kidev.Core` contains `KidevRunner`, a hosted service that starts a configurable worker pool, atomically claims due jobs through the persistence boundary, renews their leases, and invokes registered service methods through DI using reflection.
 - `Kidev.Core/Data/JobDefinition` persists a recurring job's generated integer ID, service assembly/type, method, cron expression, UTC-default time zone, execution timestamps, and enabled state.
 - Applications register direct service method calls through `services.AddKidev(...)`. Registrations use explicit stable keys, allow constant arguments only, and are frozen into an internal catalog after application setup.
-- Enabled jobs are retrieved through a PostgreSQL partial index ordered by next execution time and ID; cron expressions are parsed only when calculating the next occurrence.
+- Enabled jobs are claimed through a PostgreSQL partial index ordered by next execution time and ID. Claims use a worker-specific identifier and expiring lease so concurrent workers do not execute the same job while its owner is healthy.
 - `Kidev.Storage.PostgreSQL` keeps its EF Core context and due-job store internal. Applications configure the storage through `services.AddPostgreSqlStorage(connectionString)`; its schema migration and model snapshot ship under `Migrations`.
 - `Kidev.Dashboard` is an empty Razor component library scaffold.
 - Registered jobs are synchronized to PostgreSQL when `KidevRunner` starts. New jobs receive their first scheduled execution time, changed schedules are recalculated, and jobs removed from registration are disabled.
@@ -64,4 +64,4 @@ Submit job -> Persist job -> Runner claims job -> Execute job
 
 ## Implementation Direction
 
-Build vertically in MVP-sized increments. Add runner claiming and failure handling next, then dashboard visibility. Keep interfaces limited to persistence and hosting boundaries where substitution is required.
+Build vertically in MVP-sized increments. Add execution history and failure handling next, then dashboard visibility. Keep interfaces limited to persistence and hosting boundaries where substitution is required.

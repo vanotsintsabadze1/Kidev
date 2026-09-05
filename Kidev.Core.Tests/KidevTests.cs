@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Kidev.Core.Data;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Kidev.Core.Tests;
@@ -75,7 +76,10 @@ public sealed class KidevTests
 
         await using ServiceProvider serviceProvider = services.BuildServiceProvider();
         KidevRegistrationCatalog registrationCatalog = new Kidev().Freeze();
-        var runner = new KidevRunner(serviceProvider.GetRequiredService<IServiceScopeFactory>(), registrationCatalog);
+        var runner = new KidevRunner(
+            serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+            registrationCatalog,
+            NullLogger<KidevRunner>.Instance);
 
         await runner.StartAsync(CancellationToken.None);
 
@@ -126,6 +130,7 @@ public sealed class KidevTests
         TaskCompletionSource<(DateTimeOffset LastExecutedAtUtc, DateTimeOffset NextExecutionAtUtc)> completionSource) : IJobDefinitionStore
     {
         private JobDefinition? nextJobDefinition = jobDefinition;
+        private readonly Guid claimId = Guid.NewGuid();
 
         public bool WasSynchronized { get; private set; }
 
@@ -135,7 +140,11 @@ public sealed class KidevTests
             return Task.CompletedTask;
         }
 
-        public Task<JobDefinition?> GetNextDueAsync(DateTimeOffset utcNow, CancellationToken cancellationToken)
+        public Task<ClaimedJob?> ClaimNextDueAsync(
+            string workerId,
+            DateTimeOffset utcNow,
+            TimeSpan leaseDuration,
+            CancellationToken cancellationToken)
         {
             if (!WasSynchronized)
             {
@@ -144,11 +153,21 @@ public sealed class KidevTests
 
             JobDefinition? result = nextJobDefinition;
             nextJobDefinition = null;
-            return Task.FromResult(result);
+            return Task.FromResult(result is null ? null : new ClaimedJob(result, claimId));
+        }
+
+        public Task<bool> RenewLeaseAsync(
+            int jobId,
+            Guid claimId,
+            DateTimeOffset leaseExpiresAtUtc,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(true);
         }
 
         public Task CompleteAsync(
             int jobId,
+            Guid claimId,
             DateTimeOffset lastExecutedAtUtc,
             DateTimeOffset nextExecutionAtUtc,
             CancellationToken cancellationToken)
