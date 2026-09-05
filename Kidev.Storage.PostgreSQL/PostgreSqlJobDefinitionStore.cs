@@ -36,8 +36,14 @@ internal sealed class PostgreSqlJobDefinitionStore(KidevDbContext dbContext) : I
                 continue;
             }
 
-            bool scheduleChanged = persistedJobDefinition.CronExpression != registeredJobDefinition.CronExpression
-                || persistedJobDefinition.TimeZoneId != registeredJobDefinition.TimeZoneId;
+            bool scheduleChanged = !string.Equals(
+                    persistedJobDefinition.CronExpression,
+                    registeredJobDefinition.CronExpression,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    persistedJobDefinition.TimeZoneId,
+                    registeredJobDefinition.TimeZoneId,
+                    StringComparison.Ordinal);
 
             CopyRegistrationDefinition(registeredJobDefinition, persistedJobDefinition);
             persistedJobDefinition.IsEnabled = true;

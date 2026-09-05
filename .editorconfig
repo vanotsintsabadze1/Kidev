@@ -30,6 +30,13 @@ csharp_prefer_braces = true:error
 
 dotnet_diagnostic.IDE0005.severity = error
 dotnet_diagnostic.IDE0161.severity = error
+dotnet_diagnostic.CA1031.severity = none
+dotnet_diagnostic.CA1724.severity = none
+dotnet_diagnostic.CA2007.severity = none
+dotnet_diagnostic.MA0004.severity = none
+dotnet_diagnostic.MA0048.severity = none
+dotnet_diagnostic.MA0051.severity = none
+dotnet_diagnostic.S3267.severity = none
 
 [*.{csproj,props,targets}]
 indent_size = 2

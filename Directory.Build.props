@@ -2,8 +2,16 @@
   <PropertyGroup>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <AnalysisLevel>latest-all</AnalysisLevel>
     <LangVersion>latest</LangVersion>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>moderate</NuGetAuditLevel>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Meziantou.Analyzer" Version="3.0.205" PrivateAssets="all" />
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.33.0.1635" PrivateAssets="all" />
+  </ItemGroup>
 </Project>
