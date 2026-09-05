@@ -48,7 +48,7 @@ public sealed partial class PostgreSqlJobDefinitionStoreTests
         (await context.WorkerProcesses.CountAsync()).Should().Be(0);
     }
 
-    /// <summary>Verifies exact process ownership, stale states, short-job transitions, and safe read-only projection.</summary>
+    /// <summary>Verifies exact online-process ownership, short-job transitions, and safe read-only projection.</summary>
     [Fact]
     public async Task FactoryProjectsRealProcessesAndPersistedTransitionsAsync()
     {
@@ -83,11 +83,12 @@ public sealed partial class PostgreSqlJobDefinitionStoreTests
         FactorySnapshot snapshot = await query.ReadFactoryAsync(CancellationToken.None);
         snapshot.IsTruncated.Should().BeFalse();
         snapshot.Processes.Single(process => string.Equals(process.Id, online.Id, StringComparison.Ordinal)).State.Should().Be("Online");
-        snapshot.Processes.Single(process => string.Equals(process.Id, stale.Id, StringComparison.Ordinal)).State.Should().Be("Stale");
-        snapshot.Processes.Single(process => string.Equals(process.Id, stopped.Id, StringComparison.Ordinal)).State.Should().Be("Stopped");
+        snapshot.Processes.Should().NotContain(process => string.Equals(process.Id, stale.Id, StringComparison.Ordinal));
+        snapshot.Processes.Should().NotContain(process => string.Equals(process.Id, stopped.Id, StringComparison.Ordinal));
         snapshot.Executions.Single(attempt => attempt.Id == succeeded.Id).ProcessInstanceId.Should().Be(online.Id);
         snapshot.Executions.Single(attempt => attempt.Id == invalidSlot.Id).ProcessInstanceId.Should().BeNull();
         snapshot.Executions.Single(attempt => attempt.Id == failed.Id).ProcessInstanceId.Should().BeNull();
+        snapshot.Executions.Single(attempt => attempt.Id == expired.Id).ProcessInstanceId.Should().BeNull();
         snapshot.Executions.Single(attempt => attempt.Id == expired.Id).Status.Should().Be("LeaseExpired");
         snapshot.Executions.Single(attempt => attempt.Id == expired.Id).CompletedAtUtc.Should().BeNull();
         snapshot.Executions.Single(attempt => attempt.Id == longRunning.Id).Status.Should().Be("Running");
